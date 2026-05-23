@@ -388,17 +388,17 @@ elif page == "⚙️ 2. Preprocesamiento":
             for c in num_cols:
                 if data[c].isnull().sum() > 0:
                     if num_imp == "Media":
-                        data[c].fillna(data[c].mean(), inplace=True)
+                        data[c] = data[c].fillna(data[c].mean())
                     elif num_imp == "Mediana":
-                        data[c].fillna(data[c].median(), inplace=True)
+                        data[c] = data[c].fillna(data[c].median())
                     elif num_imp == "Cero":
-                        data[c].fillna(0, inplace=True)
+                        data[c] = data[c].fillna(0)
             for c in cat_cols:
                 if data[c].isnull().sum() > 0:
                     if cat_imp == "Moda":
-                        data[c].fillna(data[c].mode()[0], inplace=True)
+                        data[c] = data[c].fillna(data[c].mode()[0])
                     elif cat_imp == "Valor 'Unknown'":
-                        data[c].fillna("Unknown", inplace=True)
+                        data[c] = data[c].fillna("Unknown")
             st.session_state.df_processed = data
             st.success("✅ Imputación aplicada.")
             st.rerun()
