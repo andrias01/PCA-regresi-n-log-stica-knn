@@ -827,33 +827,22 @@ elif page == "🤖 5. Modelos ML":
         }
 
 
-    def show_results(res):
+    def show_results(res, threshold=0.50):
         model_key = res["name"].replace(" ", "_").lower()
 
         section_header("📊", f"Resultados — {res['name']}")
 
-        # ── Métricas base (con threshold=0.5 por defecto)
         y_test_arr = np.array(res["y_test"])
         classes = np.unique(y_test_arr)
         is_binary = (len(classes) == 2 and res["y_prob"] is not None)
 
-        # ── Slider de Threshold (solo binario con probabilidades)
+        # Aplicar threshold si es binario
         if is_binary:
-            section_header("🎚️", "Ajuste de Threshold de Clasificación")
-            st.markdown('<div class="info-box">Mueve el threshold para ver cómo cambian las métricas en tiempo real. <b>0.5</b> es el valor por defecto.</div>', unsafe_allow_html=True)
-
-            threshold = st.slider(
-                "Threshold de decisión",
-                min_value=0.01, max_value=0.99, value=0.50, step=0.01,
-                key=f"thr_{model_key}",
-                format="%.2f",
-            )
             y_pred_thr = (res["y_prob"] >= threshold).astype(int)
             acc_thr = accuracy_score(y_test_arr, y_pred_thr)
             report_thr = classification_report(y_test_arr, y_pred_thr, output_dict=True, zero_division=0)
             cm_thr = confusion_matrix(y_test_arr, y_pred_thr)
         else:
-            threshold = 0.5
             y_pred_thr = res["y_pred"]
             acc_thr = res["accuracy"]
             report_thr = res["report"]
@@ -1057,31 +1046,48 @@ elif page == "🤖 5. Modelos ML":
                 unsafe_allow_html=True,
             )
 
-        run_lr = st.button("🚀 Entrenar Regresión Logística", type="primary", key="btn_lr")
+        # ── Slider ANTES del botón para que persista en cada rerun
+        section_header("🎚️", "Threshold de Clasificación — Regresión Logística")
+        st.markdown('<div class="info-box">Ajusta el threshold <b>antes o después</b> de entrenar. Los resultados se recalculan automáticamente al moverlo. <b>0.5</b> = valor por defecto.</div>', unsafe_allow_html=True)
+        thr_lr = st.slider(
+            "Threshold (Reg. Logística)",
+            min_value=0.01, max_value=0.99, value=0.50, step=0.01,
+            key="thr_lr", format="%.2f",
+        )
+
+        col_btn_lr, col_clear_lr = st.columns([3, 1])
+        with col_btn_lr:
+            run_lr = st.button("🚀 Entrenar Regresión Logística", type="primary", key="btn_lr")
+        with col_clear_lr:
+            if st.button("🗑️ Borrar resultado", key="clear_lr"):
+                st.session_state.pop("results_lr", None)
+                st.rerun()
+
         if run_lr:
             if not indep_lr:
                 st.error("Selecciona al menos una variable independiente.")
             elif not check_y_discreta(ds_lr[dep_lr], dep_lr):
-                pass  # el error ya fue mostrado por check_y_discreta
+                pass
             else:
                 try:
                     df_model = ds_lr[indep_lr + [dep_lr]].dropna()
                     X = df_model[indep_lr].values
                     y = df_model[dep_lr].values
-
                     X_train, X_test, y_train, y_test = train_test_split(
                         X, y, test_size=ts_lr, random_state=42, stratify=y
                     )
                     sc = StandardScaler()
                     X_train = sc.fit_transform(X_train)
                     X_test = sc.transform(X_test)
-
                     model_lr = LogisticRegression(C=c_lr, max_iter=int(iter_lr), random_state=42)
                     results_lr = train_and_evaluate(X_train, X_test, y_train, y_test, model_lr, "Regresión Logística", feature_names=indep_lr)
                     st.session_state["results_lr"] = results_lr
-                    show_results(results_lr)
                 except Exception as e:
                     st.error(f"Error: {e}")
+
+        # ── Mostrar resultados SIEMPRE si existen (persiste al mover slider)
+        if st.session_state.get("results_lr"):
+            show_results(st.session_state["results_lr"], threshold=thr_lr)
 
     if "KNN" in algo or "Ambos" in algo:
         st.markdown("---")
@@ -1095,6 +1101,15 @@ elif page == "🤖 5. Modelos ML":
                 f'Clases únicas: <b>{y_prev_knn.nunique()}</b></div>',
                 unsafe_allow_html=True,
             )
+
+        # ── Slider ANTES del botón
+        section_header("🎚️", "Threshold de Clasificación — KNN")
+        st.markdown('<div class="info-box">Ajusta el threshold <b>antes o después</b> de entrenar. Los resultados se recalculan automáticamente al moverlo. <b>0.5</b> = valor por defecto.</div>', unsafe_allow_html=True)
+        thr_knn = st.slider(
+            "Threshold (KNN)",
+            min_value=0.01, max_value=0.99, value=0.50, step=0.01,
+            key="thr_knn", format="%.2f",
+        )
 
         # Elbow plot para elegir K
         if st.checkbox("📈 Mostrar Elbow Plot (selección de K)", key="elbow_cb"):
@@ -1119,31 +1134,39 @@ elif page == "🤖 5. Modelos ML":
                     fig_elbow.tight_layout()
                     st.pyplot(fig_elbow)
 
-        run_knn = st.button("🚀 Entrenar KNN", type="primary", key="btn_knn")
+        col_btn_knn, col_clear_knn = st.columns([3, 1])
+        with col_btn_knn:
+            run_knn = st.button("🚀 Entrenar KNN", type="primary", key="btn_knn")
+        with col_clear_knn:
+            if st.button("🗑️ Borrar resultado", key="clear_knn"):
+                st.session_state.pop("results_knn", None)
+                st.rerun()
+
         if run_knn:
             if not feat_knn:
                 st.error("Selecciona al menos una feature.")
             elif not check_y_discreta(ds_knn[target_knn], target_knn):
-                pass  # error ya mostrado
+                pass
             else:
                 try:
                     df_model_k = ds_knn[feat_knn + [target_knn]].dropna()
                     X_k = df_model_k[feat_knn].values
                     y_k = df_model_k[target_knn].values
-
                     X_tr_k, X_te_k, y_tr_k, y_te_k = train_test_split(
                         X_k, y_k, test_size=ts_knn, random_state=42, stratify=y_k
                     )
                     sc_k = StandardScaler()
                     X_tr_k = sc_k.fit_transform(X_tr_k)
                     X_te_k = sc_k.transform(X_te_k)
-
                     model_knn = KNeighborsClassifier(n_neighbors=k_knn, weights=w_knn, metric=m_knn)
                     results_knn = train_and_evaluate(X_tr_k, X_te_k, y_tr_k, y_te_k, model_knn, f"KNN (K={k_knn})")
                     st.session_state["results_knn"] = results_knn
-                    show_results(results_knn)
                 except Exception as e:
                     st.error(f"Error: {e}")
+
+        # ── Mostrar resultados SIEMPRE si existen
+        if st.session_state.get("results_knn"):
+            show_results(st.session_state["results_knn"], threshold=thr_knn)
 
     # ─────────────── Comparación ───────────────
     r_lr = st.session_state.get("results_lr")
