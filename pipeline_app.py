@@ -216,8 +216,8 @@ with st.sidebar:
         "",
         [
             "📁 1. Carga y Exploración",
-            "⚙️ 2. Preprocesamiento",
-            "📐 3. Encoding Categórico",
+            "📐 2. Encoding Categórico",
+            "⚙️ 3. Preprocesamiento",
             "🔭 4. Reducción PCA",
             "🤖 5. Modelos ML",
         ],
@@ -358,9 +358,9 @@ if page == "📁 1. Carga y Exploración":
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-# PÁGINA 2 — PREPROCESAMIENTO / NORMALIZACIÓN
+# PÁGINA 3 — PREPROCESAMIENTO / NORMALIZACIÓN
 # ═════════════════════════════════════════════════════════════════════════════
-elif page == "⚙️ 2. Preprocesamiento":
+elif page == "⚙️ 3. Preprocesamiento":
     st.title("⚙️ Preprocesamiento y Normalización")
 
     if st.session_state.df_original is None:
@@ -478,9 +478,9 @@ elif page == "⚙️ 2. Preprocesamiento":
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-# PÁGINA 3 — ENCODING CATEGÓRICO
+# PÁGINA 2 — ENCODING CATEGÓRICO
 # ═════════════════════════════════════════════════════════════════════════════
-elif page == "📐 3. Encoding Categórico":
+elif page == "📐 2. Encoding Categórico":
     st.title("📐 Encoding de Variables Categóricas")
 
     if st.session_state.df_processed is None:
@@ -747,7 +747,7 @@ elif page == "🤖 5. Modelos ML":
     )
 
     # ─────────────── Función de entrenamiento ───────────────
-    def train_and_evaluate(X_train, X_test, y_train, y_test, model, model_name):
+    def train_and_evaluate(X_train, X_test, y_train, y_test, model, model_name, feature_names=None):
         model.fit(X_train, y_train)
         y_pred = model.predict(X_test)
         acc = accuracy_score(y_test, y_pred)
@@ -776,58 +776,149 @@ elif page == "🤖 5. Modelos ML":
             "auc": auc,
             "y_prob": y_prob,
             "X_train_shape": X_train.shape,
+            "feature_names": feature_names or [],
         }
 
 
     def show_results(res):
+        model_key = res["name"].replace(" ", "_").lower()
+
         section_header("📊", f"Resultados — {res['name']}")
 
-        c1, c2, c3 = st.columns(3)
+        # ── Métricas base (con threshold=0.5 por defecto)
+        y_test_arr = np.array(res["y_test"])
+        classes = np.unique(y_test_arr)
+        is_binary = (len(classes) == 2 and res["y_prob"] is not None)
+
+        # ── Slider de Threshold (solo binario con probabilidades)
+        if is_binary:
+            section_header("🎚️", "Ajuste de Threshold de Clasificación")
+            st.markdown('<div class="info-box">Mueve el threshold para ver cómo cambian las métricas en tiempo real. <b>0.5</b> es el valor por defecto.</div>', unsafe_allow_html=True)
+
+            threshold = st.slider(
+                "Threshold de decisión",
+                min_value=0.01, max_value=0.99, value=0.50, step=0.01,
+                key=f"thr_{model_key}",
+                format="%.2f",
+            )
+            y_pred_thr = (res["y_prob"] >= threshold).astype(int)
+            acc_thr = accuracy_score(y_test_arr, y_pred_thr)
+            report_thr = classification_report(y_test_arr, y_pred_thr, output_dict=True, zero_division=0)
+            cm_thr = confusion_matrix(y_test_arr, y_pred_thr)
+        else:
+            threshold = 0.5
+            y_pred_thr = res["y_pred"]
+            acc_thr = res["accuracy"]
+            report_thr = res["report"]
+            cm_thr = res["cm"]
+
+        # ── Tarjetas de métricas dinámicas
+        c1, c2, c3, c4 = st.columns(4)
         with c1:
-            st.markdown(metric_card("Accuracy", f"{res['accuracy']*100:.1f}%"), unsafe_allow_html=True)
+            st.markdown(metric_card("Accuracy", f"{acc_thr*100:.1f}%"), unsafe_allow_html=True)
         with c2:
-            macro = res["report"].get("macro avg", {})
+            macro = report_thr.get("macro avg", {})
             st.markdown(metric_card("F1-Score (macro)", f"{macro.get('f1-score', 0)*100:.1f}%"), unsafe_allow_html=True)
         with c3:
+            prec = report_thr.get("macro avg", {}).get("precision", 0)
+            st.markdown(metric_card("Precisión (macro)", f"{prec*100:.1f}%"), unsafe_allow_html=True)
+        with c4:
             auc_text = f"{res['auc']:.3f}" if res["auc"] is not None else "N/A"
             st.markdown(metric_card("AUC-ROC", auc_text), unsafe_allow_html=True)
 
         col_a, col_b = st.columns(2)
 
         with col_a:
-            # Matriz de confusión
+            # Matriz de confusión (reactiva al threshold)
             plot_style()
-            fig, ax = plt.subplots(figsize=(5, 4))
-            disp = ConfusionMatrixDisplay(confusion_matrix=res["cm"])
-            disp.plot(ax=ax, colorbar=False, cmap="Blues")
-            ax.set_title("Matriz de Confusión")
-            fig.tight_layout()
-            st.pyplot(fig)
+            fig_cm, ax_cm = plt.subplots(figsize=(5, 4))
+            disp = ConfusionMatrixDisplay(confusion_matrix=cm_thr)
+            disp.plot(ax=ax_cm, colorbar=False, cmap="Blues")
+            thr_label = f" (thr={threshold:.2f})" if is_binary else ""
+            ax_cm.set_title(f"Matriz de Confusión{thr_label}")
+            fig_cm.tight_layout()
+            st.pyplot(fig_cm)
 
         with col_b:
             # Reporte de clasificación
-            report_df = pd.DataFrame(res["report"]).T.round(3)
+            report_df = pd.DataFrame(report_thr).T.round(3)
             report_df = report_df.drop(index=["accuracy"], errors="ignore")
             st.markdown("**Reporte de Clasificación**")
             st.dataframe(report_df, use_container_width=True)
 
-        # Curva ROC (solo binario)
-        if res["auc"] is not None and res["y_prob"] is not None:
-            y_test_arr = np.array(res["y_test"])
-            classes = np.unique(y_test_arr)
-            if len(classes) == 2:
-                fpr, tpr, _ = roc_curve(y_test_arr, res["y_prob"])
+        # ── Curva ROC + línea del threshold (binario)
+        if is_binary:
+            fpr, tpr, thresholds_roc = roc_curve(y_test_arr, res["y_prob"])
+            # encontrar punto más cercano al threshold actual
+            idx_thr = np.argmin(np.abs(thresholds_roc - threshold))
+
+            plot_style()
+            fig_roc, ax_roc = plt.subplots(figsize=(7, 4))
+            ax_roc.plot(fpr, tpr, color="#7c3aed", lw=2.5,
+                        label=f"AUC = {res['auc']:.3f}")
+            ax_roc.plot([0, 1], [0, 1], color="#555577", ls="--", lw=1.5, label="Random")
+            ax_roc.scatter(fpr[idx_thr], tpr[idx_thr], s=120, zorder=5,
+                           color="#f59e0b", edgecolors="#0f0f1a",
+                           label=f"Threshold = {threshold:.2f}")
+            ax_roc.set_xlabel("False Positive Rate")
+            ax_roc.set_ylabel("True Positive Rate")
+            ax_roc.set_title("Curva ROC")
+            ax_roc.legend()
+            fig_roc.tight_layout()
+            st.pyplot(fig_roc)
+
+        # ── Top-10 Coeficientes (solo Regresión Logística)
+        if "Logística" in res["name"] or "Logistic" in res["name"]:
+            model_obj = res.get("model")
+            feat_names = res.get("feature_names", [])
+            if model_obj is not None and hasattr(model_obj, "coef_") and feat_names:
+                section_header("🏆", "Top 10 Coeficientes — Regresión Logística")
+                st.markdown('<div class="info-box">Los coeficientes con mayor valor absoluto son los que más impacto tienen en la predicción. Positivo → aumenta la probabilidad de la clase; Negativo → la reduce.</div>', unsafe_allow_html=True)
+
+                coef_arr = model_obj.coef_
+                # Para multiclase tomar la media del valor absoluto entre clases
+                if coef_arr.shape[0] > 1:
+                    coef_vals = np.mean(np.abs(coef_arr), axis=0)
+                    coef_signed = np.mean(coef_arr, axis=0)
+                else:
+                    coef_vals = np.abs(coef_arr[0])
+                    coef_signed = coef_arr[0]
+
+                top10_idx = np.argsort(coef_vals)[::-1][:10]
+                top10_names = [feat_names[i] for i in top10_idx]
+                top10_vals = coef_signed[top10_idx]
+                top10_abs = coef_vals[top10_idx]
+
+                coef_df = pd.DataFrame({
+                    "Variable": top10_names,
+                    "Coeficiente": top10_vals.round(4),
+                    "|Coeficiente|": top10_abs.round(4),
+                    "Dirección": ["↑ Positivo" if v > 0 else "↓ Negativo" for v in top10_vals],
+                })
+                st.dataframe(coef_df, use_container_width=True)
+
+                # Gráfica de barras horizontales
                 plot_style()
-                fig_roc, ax_roc = plt.subplots(figsize=(6, 4))
-                ax_roc.plot(fpr, tpr, color="#7c3aed", lw=2.5,
-                            label=f"AUC = {res['auc']:.3f}")
-                ax_roc.plot([0, 1], [0, 1], color="#555577", ls="--", lw=1.5)
-                ax_roc.set_xlabel("False Positive Rate")
-                ax_roc.set_ylabel("True Positive Rate")
-                ax_roc.set_title("Curva ROC")
-                ax_roc.legend()
-                fig_roc.tight_layout()
-                st.pyplot(fig_roc)
+                fig_coef, ax_coef = plt.subplots(figsize=(9, 5))
+                bar_colors = ["#10b981" if v > 0 else "#ef4444" for v in top10_vals]
+                y_pos = np.arange(len(top10_names))
+                ax_coef.barh(y_pos, top10_vals, color=bar_colors,
+                             edgecolor="#0f0f1a", height=0.65)
+                ax_coef.set_yticks(y_pos)
+                ax_coef.set_yticklabels(top10_names, fontsize=10)
+                ax_coef.axvline(0, color="#8888cc", lw=1.2)
+                ax_coef.set_xlabel("Coeficiente")
+                ax_coef.set_title("Top 10 Coeficientes por Valor Absoluto")
+                # Etiquetas de valor
+                for i, v in enumerate(top10_vals):
+                    offset = 0.01 * (max(top10_vals) - min(top10_vals)) if (max(top10_vals) - min(top10_vals)) != 0 else 0.01
+                    ax_coef.text(v + (offset if v >= 0 else -offset),
+                                 i, f"{v:.3f}",
+                                 va="center",
+                                 ha="left" if v >= 0 else "right",
+                                 fontsize=8.5, color="#e0e0ff")
+                fig_coef.tight_layout()
+                st.pyplot(fig_coef)
 
 
     # ─────────────── Panel de configuración Regresión Logística ───────────────
@@ -927,7 +1018,7 @@ elif page == "🤖 5. Modelos ML":
                     X_test = sc.transform(X_test)
 
                     model_lr = LogisticRegression(C=c_lr, max_iter=int(iter_lr), random_state=42)
-                    results_lr = train_and_evaluate(X_train, X_test, y_train, y_test, model_lr, "Regresión Logística")
+                    results_lr = train_and_evaluate(X_train, X_test, y_train, y_test, model_lr, "Regresión Logística", feature_names=indep_lr)
                     st.session_state["results_lr"] = results_lr
                     show_results(results_lr)
                 except Exception as e:
