@@ -420,11 +420,30 @@ elif page == "⚙️ 3. Preprocesamiento":
     if not num_cols:
         st.info("No hay columnas numéricas para normalizar.")
     else:
-        cols_to_scale = st.multiselect(
-            "Selecciona columnas a escalar",
+        st.markdown('<div class="info-box">Selecciona las variables que <b>NO</b> quieres normalizar (ej. variable objetivo, IDs, flags binarios). El resto se normalizará.</div>', unsafe_allow_html=True)
+
+        cols_excluir = st.multiselect(
+            "🚫 Variables a EXCLUIR de la normalización",
             num_cols,
-            default=num_cols,
+            default=[],
+            placeholder="Elige columnas que no deben normalizarse...",
         )
+        cols_to_scale = [c for c in num_cols if c not in cols_excluir]
+
+        col_prev1, col_prev2 = st.columns(2)
+        with col_prev1:
+            st.markdown(f"**✅ Se normalizarán ({len(cols_to_scale)}):**")
+            if cols_to_scale:
+                st.code("\n".join(cols_to_scale))
+            else:
+                st.info("Ninguna columna seleccionada.")
+        with col_prev2:
+            st.markdown(f"**🚫 Se mantendrán sin cambio ({len(cols_excluir)}):**")
+            if cols_excluir:
+                st.code("\n".join(cols_excluir))
+            else:
+                st.info("Ninguna excluida.")
+
         scaler_method = st.radio(
             "Método de normalización",
             ["StandardScaler (Z-score)", "MinMaxScaler (0–1)", "RobustScaler (mediana–IQR)"],
@@ -451,18 +470,19 @@ elif page == "⚙️ 3. Preprocesamiento":
                 data[cols_to_scale] = scaler.fit_transform(data[cols_to_scale])
                 st.session_state.df_processed = data
                 st.session_state.scaler_fitted = scaler
-                st.success(f"✅ Normalización aplicada a {len(cols_to_scale)} columnas.")
+                st.success(f"✅ Normalización aplicada a {len(cols_to_scale)} columnas. {len(cols_excluir)} columna(s) sin modificar.")
 
                 # Comparar antes/después
                 plot_style()
-                orig = st.session_state.df_original[cols_to_scale[:min(3, len(cols_to_scale))]]
-                norm = data[cols_to_scale[:min(3, len(cols_to_scale))]]
+                preview_cols = cols_to_scale[:min(3, len(cols_to_scale))]
+                orig = st.session_state.df_original[preview_cols]
+                norm = data[preview_cols]
 
-                fig, axes = plt.subplots(2, min(3, len(cols_to_scale)),
-                                         figsize=(5 * min(3, len(cols_to_scale)), 6))
-                if len(cols_to_scale) == 1:
-                    axes = axes.reshape(2, 1)
-                for i, col in enumerate(cols_to_scale[:3]):
+                fig, axes = plt.subplots(2, len(preview_cols),
+                                         figsize=(5 * len(preview_cols), 6))
+                if len(preview_cols) == 1:
+                    axes = np.array(axes).reshape(2, 1)
+                for i, col in enumerate(preview_cols):
                     axes[0, i].hist(orig[col].dropna(), bins=25, color="#4f46e5", edgecolor="#0f0f1a", alpha=0.85)
                     axes[0, i].set_title(f"{col}\n(original)", fontsize=9)
                     axes[1, i].hist(norm[col].dropna(), bins=25, color="#10b981", edgecolor="#0f0f1a", alpha=0.85)
@@ -470,6 +490,8 @@ elif page == "⚙️ 3. Preprocesamiento":
                 fig.suptitle("Antes vs Después de la Normalización", y=1.02)
                 fig.tight_layout()
                 st.pyplot(fig)
+            else:
+                st.warning("⚠️ Todas las columnas están excluidas. Selecciona al menos una para normalizar.")
 
     st.markdown("---")
     section_header("📋", "Dataset Actual")
@@ -753,6 +775,24 @@ elif page == "🤖 5. Modelos ML":
         horizontal=True,
     )
 
+    # ─────────────── Helper: validar que Y sea discreta ───────────────
+    def check_y_discreta(series, nombre):
+        """Devuelve True si la variable es apta para clasificación, False si es continua."""
+        if not np.issubdtype(np.array(series).dtype, np.number):
+            return True   # categórica/string → ok
+        unique_ratio = len(series.dropna().unique()) / max(len(series.dropna()), 1)
+        es_continua = unique_ratio > 0.05 and np.issubdtype(series.dtype, np.floating)
+        if es_continua:
+            st.error(
+                f"❌ La variable **{nombre}** es continua "
+                f"({series.nunique()} valores únicos, tipo `{series.dtype}`). "
+                f"Los clasificadores necesitan clases discretas. "
+                f"👉 Ve a **⚙️ 3. Preprocesamiento** y excluye esta variable de la normalización, "
+                f"o elige otra variable con pocas categorías como variable dependiente."
+            )
+            return False
+        return True
+
     # ─────────────── Función de entrenamiento ───────────────
     def train_and_evaluate(X_train, X_test, y_train, y_test, model, model_name, feature_names=None):
         model.fit(X_train, y_train)
@@ -1008,15 +1048,27 @@ elif page == "🤖 5. Modelos ML":
     if "Regresión Logística" in algo or "Ambos" in algo:
         ds_lr, dep_lr, indep_lr, ts_lr, c_lr, iter_lr = config_lr("lr")
 
+        if dep_lr and dep_lr in ds_lr.columns:
+            y_preview = ds_lr[dep_lr].dropna()
+            st.markdown(
+                f'<div class="info-box">📌 Variable Y: <b>{dep_lr}</b> | '
+                f'Tipo: <code>{y_preview.dtype}</code> | '
+                f'Clases únicas: <b>{y_preview.nunique()}</b></div>',
+                unsafe_allow_html=True,
+            )
+
         run_lr = st.button("🚀 Entrenar Regresión Logística", type="primary", key="btn_lr")
         if run_lr:
             if not indep_lr:
                 st.error("Selecciona al menos una variable independiente.")
+            elif not check_y_discreta(ds_lr[dep_lr], dep_lr):
+                pass  # el error ya fue mostrado por check_y_discreta
             else:
                 try:
                     df_model = ds_lr[indep_lr + [dep_lr]].dropna()
                     X = df_model[indep_lr].values
                     y = df_model[dep_lr].values
+
                     X_train, X_test, y_train, y_test = train_test_split(
                         X, y, test_size=ts_lr, random_state=42, stratify=y
                     )
@@ -1035,25 +1087,28 @@ elif page == "🤖 5. Modelos ML":
         st.markdown("---")
         ds_knn, target_knn, feat_knn, ts_knn, k_knn, w_knn, m_knn = config_knn("knn")
 
+        if target_knn and target_knn in ds_knn.columns:
+            y_prev_knn = ds_knn[target_knn].dropna()
+            st.markdown(
+                f'<div class="info-box">📌 Variable Y: <b>{target_knn}</b> | '
+                f'Tipo: <code>{y_prev_knn.dtype}</code> | '
+                f'Clases únicas: <b>{y_prev_knn.nunique()}</b></div>',
+                unsafe_allow_html=True,
+            )
+
         # Elbow plot para elegir K
         if st.checkbox("📈 Mostrar Elbow Plot (selección de K)", key="elbow_cb"):
-            if feat_knn and target_knn:
+            if feat_knn and target_knn and check_y_discreta(ds_knn[target_knn], target_knn):
                 df_model_e = ds_knn[feat_knn + [target_knn]].dropna()
                 X_e = df_model_e[feat_knn].values
                 y_e = df_model_e[target_knn].values
                 if len(np.unique(y_e)) >= 2:
-                    X_tr_e, X_te_e, y_tr_e, y_te_e = train_test_split(
-                        X_e, y_e, test_size=ts_knn, random_state=42
-                    )
+                    X_tr_e, X_te_e, y_tr_e, y_te_e = train_test_split(X_e, y_e, test_size=ts_knn, random_state=42)
                     sc_e = StandardScaler()
                     X_tr_e = sc_e.fit_transform(X_tr_e)
                     X_te_e = sc_e.transform(X_te_e)
                     k_range = range(1, min(31, len(X_tr_e)))
-                    accs = []
-                    for ki in k_range:
-                        knn_e = KNeighborsClassifier(n_neighbors=ki)
-                        knn_e.fit(X_tr_e, y_tr_e)
-                        accs.append(accuracy_score(y_te_e, knn_e.predict(X_te_e)))
+                    accs = [accuracy_score(y_te_e, KNeighborsClassifier(n_neighbors=ki).fit(X_tr_e, y_tr_e).predict(X_te_e)) for ki in k_range]
                     plot_style()
                     fig_elbow, ax_elbow = plt.subplots(figsize=(8, 4))
                     ax_elbow.plot(list(k_range), accs, marker="o", color="#7c3aed", lw=2.5)
@@ -1068,11 +1123,14 @@ elif page == "🤖 5. Modelos ML":
         if run_knn:
             if not feat_knn:
                 st.error("Selecciona al menos una feature.")
+            elif not check_y_discreta(ds_knn[target_knn], target_knn):
+                pass  # error ya mostrado
             else:
                 try:
                     df_model_k = ds_knn[feat_knn + [target_knn]].dropna()
                     X_k = df_model_k[feat_knn].values
                     y_k = df_model_k[target_knn].values
+
                     X_tr_k, X_te_k, y_tr_k, y_te_k = train_test_split(
                         X_k, y_k, test_size=ts_knn, random_state=42, stratify=y_k
                     )
