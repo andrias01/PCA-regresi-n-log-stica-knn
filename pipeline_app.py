@@ -544,9 +544,16 @@ elif page == "📐 2. Encoding Categórico":
             elif method == "Ordinal Encoding":
                 order = ordinal_orders.get(col, [])
                 if order:
-                    oe = OrdinalEncoder(categories=[order])
-                    df_enc[col] = oe.fit_transform(df_enc[[col]].astype(str))
-                    applied.append(f"✔ `{col}` → Ordinal Encoding")
+                    # Mapeo manual: más robusto que OrdinalEncoder ante valores no listados
+                    order_map = {str(v).strip(): i for i, v in enumerate(order)}
+                    df_enc[col] = df_enc[col].astype(str).str.strip().map(order_map)
+                    # Valores no mapeados quedan NaN → rellenar con -1
+                    unmapped = df_enc[col].isna().sum()
+                    if unmapped > 0:
+                        df_enc[col] = df_enc[col].fillna(-1)
+                        st.warning(f"⚠️ `{col}`: {unmapped} valor(es) no encontrado(s) en el orden definido → asignados -1.")
+                    df_enc[col] = df_enc[col].astype(float)
+                    applied.append(f"✔ `{col}` → Ordinal Encoding ({len(order)} niveles)")
                 else:
                     st.warning(f"No se definió orden para `{col}`. Se omite.")
 
