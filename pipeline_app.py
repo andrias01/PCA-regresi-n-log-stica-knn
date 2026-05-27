@@ -311,23 +311,25 @@ elif page == "🤖 4. Modelos ML":
         return True
 
     def compute_metrics(y_test, y_pred, y_prob, model_name, is_binary):
-        """Devuelve dict con todas las métricas."""
-        avg = "binary" if is_binary else "macro"
+        """
+        Almacena métricas usando 'weighted' avg → coherente con la matriz de confusión
+        y con la fila 'weighted avg' del reporte de clasificación.
+        """
         res = {
             "name": model_name,
-            "accuracy": accuracy_score(y_test, y_pred),
-            "precision": precision_score(y_test, y_pred, average=avg, zero_division=0),
-            "recall": recall_score(y_test, y_pred, average=avg, zero_division=0),
-            "f1": f1_score(y_test, y_pred, average=avg, zero_division=0),
-            "cm": confusion_matrix(y_test, y_pred),
-            "report": classification_report(y_test, y_pred, output_dict=True, zero_division=0),
+            "accuracy":  accuracy_score(y_test, y_pred),
+            "precision": precision_score(y_test, y_pred, average="weighted", zero_division=0),
+            "recall":    recall_score(y_test, y_pred, average="weighted", zero_division=0),
+            "f1":        f1_score(y_test, y_pred, average="weighted", zero_division=0),
+            "cm":        confusion_matrix(y_test, y_pred),
+            "report":    classification_report(y_test, y_pred, output_dict=True, zero_division=0),
             "y_pred": y_pred, "y_test": y_test, "y_prob": y_prob, "is_binary": is_binary,
             "auc": None, "logloss": None,
         }
         if y_prob is not None:
             try:
                 if is_binary:
-                    res["auc"] = roc_auc_score(y_test, y_prob)
+                    res["auc"]     = roc_auc_score(y_test, y_prob)
                     res["logloss"] = log_loss(y_test, y_prob)
                 else:
                     res["auc"] = roc_auc_score(y_test, y_prob, multi_class="ovr", average="macro")
@@ -337,14 +339,11 @@ elif page == "🤖 4. Modelos ML":
     def train_model(model, X_tr, X_te, y_tr, y_te, name, feat_names=None):
         model.fit(X_tr, y_tr)
         y_pred = model.predict(X_te)
-        classes = np.unique(y_tr)
-        is_binary = len(classes)==2
+        is_binary = len(np.unique(y_tr)) == 2
         try:
-            if is_binary:
-                y_prob = model.predict_proba(X_te)[:,1]
-            else:
-                y_prob = model.predict_proba(X_te)
-        except: y_prob = None
+            y_prob = model.predict_proba(X_te)[:, 1] if is_binary else model.predict_proba(X_te)
+        except:
+            y_prob = None
         res = compute_metrics(y_te, y_pred, y_prob, name, is_binary)
         res["model"] = model
         res["feature_names"] = feat_names or []
@@ -352,61 +351,89 @@ elif page == "🤖 4. Modelos ML":
         return res
 
     def show_metrics_cards(res, threshold=0.5):
-        """Tarjetas de métricas (con threshold aplicado si binario)."""
+        """
+        Tarjetas siempre coherentes con la tabla:
+        - Si hay probabilidades (y threshold activo) → recalcula con threshold.
+        - Siempre usa weighted avg igual que compute_metrics.
+        - Las tarjetas coinciden exactamente con la fila 'weighted avg' del reporte.
+        """
         yt = np.array(res["y_test"])
-        is_bin = res["is_binary"] and res["y_prob"] is not None and np.ndim(res["y_prob"])==1
+        has_prob = res["y_prob"] is not None and np.ndim(res["y_prob"]) == 1
+        is_bin   = res["is_binary"] and has_prob
+
+        # Predicciones con threshold (si aplica) o las originales
+        yp = (res["y_prob"] >= threshold).astype(int) if is_bin else res["y_pred"]
+
+        # Métricas SIEMPRE weighted → coherentes con la tabla y la matriz
+        acc  = accuracy_score(yt, yp)
+        prec = precision_score(yt, yp, average="weighted", zero_division=0)
+        rec  = recall_score(yt, yp, average="weighted", zero_division=0)
+        f1v  = f1_score(yt, yp, average="weighted", zero_division=0)
+        cm   = confusion_matrix(yt, yp)
+        rep  = classification_report(yt, yp, output_dict=True, zero_division=0)
+
+        # Recalcular AUC y logloss con threshold si hay probs
         if is_bin:
-            yp = (res["y_prob"]>=threshold).astype(int)
-            avg="binary"
+            try:    auc_val = roc_auc_score(yt, res["y_prob"])
+            except: auc_val = None
+            try:    ll_val  = log_loss(yt, res["y_prob"])
+            except: ll_val  = None
         else:
-            yp = res["y_pred"]
-            avg="macro"
-        acc = accuracy_score(yt,yp)
-        prec = precision_score(yt,yp,average=avg,zero_division=0)
-        rec  = recall_score(yt,yp,average=avg,zero_division=0)
-        f1   = f1_score(yt,yp,average=avg,zero_division=0)
-        cm   = confusion_matrix(yt,yp)
-        rep  = classification_report(yt,yp,output_dict=True,zero_division=0)
-        auc_text = f"{res['auc']:.3f}" if res['auc'] is not None else "N/A"
-        ll_text  = f"{res['logloss']:.4f}" if res.get('logloss') is not None else "N/A"
+            auc_val = res["auc"]
+            ll_val  = res.get("logloss")
+
+        auc_text = f"{auc_val:.3f}" if auc_val is not None else "N/A"
+        ll_text  = f"{ll_val:.4f}"  if ll_val  is not None else "N/A"
+
+        # ── Nota de coherencia ──
+        thr_note = f" · threshold={threshold:.2f}" if is_bin else ""
+        st.markdown(
+            f'<div class="info-box">📐 Métricas en <b>weighted average</b>{thr_note} '
+            f'— coinciden con la fila <i>weighted avg</i> del reporte y con la Matriz de Confusión.</div>',
+            unsafe_allow_html=True
+        )
 
         cols = st.columns(6)
-        for c,lbl,val in zip(cols,
-            ["Accuracy","Precision","Recall","F1-Score","ROC-AUC","Log Loss"],
-            [f"{acc*100:.1f}%",f"{prec*100:.1f}%",f"{rec*100:.1f}%",f"{f1*100:.1f}%",auc_text,ll_text]):
-            c.markdown(metric_card(lbl,val), unsafe_allow_html=True)
+        for c, lbl, val in zip(cols,
+            ["Accuracy", "Precision (W)", "Recall (W)", "F1-Score (W)", "ROC-AUC", "Log Loss"],
+            [f"{acc*100:.1f}%", f"{prec*100:.1f}%", f"{rec*100:.1f}%", f"{f1v*100:.1f}%", auc_text, ll_text]):
+            c.markdown(metric_card(lbl, val), unsafe_allow_html=True)
 
-        ca,cb = st.columns(2)
+        ca, cb = st.columns(2)
         with ca:
-            plot_style(); fig,ax=plt.subplots(figsize=(5,4))
-            ConfusionMatrixDisplay(cm).plot(ax=ax,colorbar=False,cmap="Blues")
+            plot_style(); fig, ax = plt.subplots(figsize=(5, 4))
+            ConfusionMatrixDisplay(cm).plot(ax=ax, colorbar=False, cmap="Blues")
             tl = f" (thr={threshold:.2f})" if is_bin else ""
             ax.set_title(f"Matriz de Confusión{tl}"); fig.tight_layout(); st.pyplot(fig)
         with cb:
-            rdf=pd.DataFrame(rep).T.round(3).drop(index=["accuracy"],errors="ignore")
-            st.markdown("**Reporte de Clasificación**"); st.dataframe(rdf,use_container_width=True)
+            rdf = pd.DataFrame(rep).T.round(3).drop(index=["accuracy"], errors="ignore")
+            st.markdown("**Reporte de Clasificación** *(las tarjetas usan fila* `weighted avg`*)*")
+            st.dataframe(rdf, use_container_width=True)
 
-        # Curva ROC (binario)
-        if is_bin and res["auc"] is not None:
-            fpr,tpr,thr_arr=roc_curve(yt,res["y_prob"])
-            idx=np.argmin(np.abs(thr_arr-threshold))
-            plot_style(); fig2,ax2=plt.subplots(figsize=(7,4))
-            ax2.plot(fpr,tpr,color="#7c3aed",lw=2.5,label=f"AUC={res['auc']:.3f}")
-            ax2.plot([0,1],[0,1],color="#555577",ls="--",lw=1.5,label="Random")
-            ax2.scatter(fpr[idx],tpr[idx],s=120,zorder=5,color="#f59e0b",edgecolors="#0f0f1a",label=f"thr={threshold:.2f}")
-            ax2.set_xlabel("FPR"); ax2.set_ylabel("TPR"); ax2.set_title("Curva ROC"); ax2.legend()
+        # Curva ROC
+        if is_bin and auc_val is not None:
+            fpr, tpr, thr_arr = roc_curve(yt, res["y_prob"])
+            idx = np.argmin(np.abs(thr_arr - threshold))
+            plot_style(); fig2, ax2 = plt.subplots(figsize=(7, 4))
+            ax2.plot(fpr, tpr, color="#7c3aed", lw=2.5, label=f"AUC={auc_val:.3f}")
+            ax2.plot([0,1],[0,1], color="#555577", ls="--", lw=1.5, label="Random")
+            ax2.scatter(fpr[idx], tpr[idx], s=120, zorder=5, color="#f59e0b",
+                        edgecolors="#0f0f1a", label=f"thr={threshold:.2f}")
+            ax2.set_xlabel("FPR"); ax2.set_ylabel("TPR")
+            ax2.set_title("Curva ROC"); ax2.legend()
             fig2.tight_layout(); st.pyplot(fig2)
 
-        # Curva Precision-Recall (solo LR binario)
+        # Curva Precision-Recall (LR binario)
         if is_bin and "Logística" in res["name"] and res["y_prob"] is not None:
-            section_header("📉","Curva Precision-Recall")
-            pr,rc,_ = precision_recall_curve(yt,res["y_prob"])
-            plot_style(); fig3,ax3=plt.subplots(figsize=(7,4))
-            ax3.plot(rc,pr,color="#10b981",lw=2.5)
-            ax3.set_xlabel("Recall"); ax3.set_ylabel("Precision"); ax3.set_title("Precision-Recall Curve")
+            section_header("📉", "Curva Precision-Recall")
+            pr, rc, _ = precision_recall_curve(yt, res["y_prob"])
+            plot_style(); fig3, ax3 = plt.subplots(figsize=(7, 4))
+            ax3.plot(rc, pr, color="#10b981", lw=2.5)
+            ax3.set_xlabel("Recall"); ax3.set_ylabel("Precision")
+            ax3.set_title("Precision-Recall Curve")
             fig3.tight_layout(); st.pyplot(fig3)
 
-        return acc, prec, rec, f1, cm, rep
+        return acc, prec, rec, f1v, cm, rep
 
     def show_cv(model_cls, X, y, cv=5, key_prefix=""):
         """Cross Validation desplegable."""
