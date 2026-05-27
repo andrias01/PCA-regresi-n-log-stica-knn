@@ -31,7 +31,7 @@ Transformación robusta de variables categóricas (Label, One-Hot y Ordinal Enco
 
 ### 4. Evaluación de Modelos ML y Clasificación por Ensamble
 Entrenamiento dinámico con ajuste de hiperparámetros en tiempo real, curvas ROC, matrices de confusión y reportes detallados. Incluye una sección avanzada para el análisis de sesgos o desbalances comparando los modelos base frente a un Voting Classifier (Ensamble).
-![Análisis de Machine Learning](./IMAGENES/analis-ML.png)
+![Análisis de Machine Learning](./IMAGENES/analisis-ML.png)
 
 ---
 
