@@ -3,6 +3,7 @@ ML Pipeline App — Streamlit
 Exploración · Encoding · Preprocesamiento · Modelos ML (LR · KNN · RF) · Comparación · Ensamble
 """
 
+import os as _os
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -21,6 +22,14 @@ from sklearn.metrics import (
     roc_auc_score, log_loss, confusion_matrix, ConfusionMatrixDisplay,
     roc_curve, precision_recall_curve, classification_report,
 )
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DATASETS PREDEFINIDOS — ajusta las rutas si tus CSVs están en otra carpeta
+# ─────────────────────────────────────────────────────────────────────────────
+DATASET_PATHS = {
+    "HR Attrition — Limpio (Sin Derivadas)": "HR-Employee-Attrition-Limpio-Sin-Derivadas.csv",
+    "HR Attrition — Original (IBM/Kaggle)":  "WA_Fn-UseC_-HR-Employee-Attrition.csv",
+}
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PÁGINA
@@ -108,19 +117,75 @@ with st.sidebar:
 # ═════════════════════════════════════════════════════════════════════════════
 if page == "📁 1. Carga y Exploración":
     st.title("📁 Carga y Exploración de Datos")
-    uploaded = st.file_uploader("Sube tu archivo CSV", type=["csv"])
-    if uploaded:
-        c1,c2 = st.columns(2)
-        sep = c1.selectbox("Separador",[",",";","|","\t"])
-        enc = c2.selectbox("Encoding",["utf-8","latin-1","cp1252"])
-        try:
-            data = pd.read_csv(uploaded, sep=sep, encoding=enc)
-            st.session_state.df_original = data
-            st.session_state.df_processed = data.copy()
-        except Exception as e:
-            st.error(f"Error: {e}"); st.stop()
 
-        st.markdown('<div class="success-box">✅ Archivo cargado correctamente</div>', unsafe_allow_html=True)
+    # ── Selector de fuente ────────────────────────────────────────────────────
+    section_header("📂", "Selecciona el Dataset")
+
+    opciones = list(DATASET_PATHS.keys()) + ["⬆️ Subir archivo propio"]
+    fuente = st.radio(
+        "Fuente de datos",
+        opciones,
+        horizontal=False,
+        label_visibility="collapsed",
+    )
+
+    # ── Parámetros de lectura ─────────────────────────────────────────────────
+    c1, c2 = st.columns(2)
+    sep = c1.selectbox("Separador", [",", ";", "|", "\t"])
+    enc = c2.selectbox("Encoding", ["utf-8", "latin-1", "cp1252"])
+
+    data = None
+
+    # ── Opción A: dataset predefinido ─────────────────────────────────────────
+    if fuente in DATASET_PATHS:
+        ruta = DATASET_PATHS[fuente]
+        if _os.path.exists(ruta):
+            try:
+                data = pd.read_csv(ruta, sep=sep, encoding=enc)
+                st.session_state.df_original  = data
+                st.session_state.df_processed = data.copy()
+                st.markdown(
+                    f'<div class="success-box">✅ Dataset <b>{fuente}</b> cargado '
+                    f'desde <code>{ruta}</code></div>',
+                    unsafe_allow_html=True,
+                )
+            except Exception as e:
+                st.error(f"Error al leer {ruta}: {e}")
+                st.stop()
+        else:
+            st.markdown(
+                f'<div class="warn-box">⚠️ No se encontró <code>{ruta}</code> en la carpeta raíz del proyecto.<br>'
+                f'Coloca el CSV en el mismo directorio que este script, '
+                f'o ajusta la variable <code>DATASET_PATHS</code> al inicio del código.</div>',
+                unsafe_allow_html=True,
+            )
+
+    # ── Opción B: upload manual ───────────────────────────────────────────────
+    else:
+        uploaded = st.file_uploader("Sube tu archivo CSV", type=["csv"])
+        if uploaded:
+            try:
+                data = pd.read_csv(uploaded, sep=sep, encoding=enc)
+                st.session_state.df_original  = data
+                st.session_state.df_processed = data.copy()
+                st.markdown(
+                    '<div class="success-box">✅ Archivo cargado correctamente</div>',
+                    unsafe_allow_html=True,
+                )
+            except Exception as e:
+                st.error(f"Error: {e}")
+                st.stop()
+        else:
+            if st.session_state.df_original is not None:
+                data = st.session_state.df_original
+            else:
+                st.markdown(
+                    '<div class="info-box">👆 Sube un archivo CSV para comenzar.</div>',
+                    unsafe_allow_html=True,
+                )
+
+    # ── Exploración ───────────────────────────────────────────────────────────
+    if data is not None:
 
         section_header("📏","Dimensiones")
         cols = st.columns(4)
@@ -163,8 +228,6 @@ if page == "📁 1. Carga y Exploración":
                     axes[i].set_title(c,fontsize=10)
                 for j in range(len(sel),len(axes)): axes[j].set_visible(False)
                 fig.tight_layout(); st.pyplot(fig)
-    else:
-        st.markdown('<div class="info-box">👆 Sube un archivo CSV para comenzar.</div>', unsafe_allow_html=True)
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -311,10 +374,6 @@ elif page == "🤖 4. Modelos ML":
         return True
 
     def compute_metrics(y_test, y_pred, y_prob, model_name, is_binary):
-        """
-        Almacena métricas usando 'weighted' avg → coherente con la matriz de confusión
-        y con la fila 'weighted avg' del reporte de clasificación.
-        """
         res = {
             "name": model_name,
             "accuracy":  accuracy_score(y_test, y_pred),
@@ -351,20 +410,12 @@ elif page == "🤖 4. Modelos ML":
         return res
 
     def show_metrics_cards(res, threshold=0.5):
-        """
-        Tarjetas siempre coherentes con la tabla:
-        - Si hay probabilidades (y threshold activo) → recalcula con threshold.
-        - Siempre usa weighted avg igual que compute_metrics.
-        - Las tarjetas coinciden exactamente con la fila 'weighted avg' del reporte.
-        """
         yt = np.array(res["y_test"])
         has_prob = res["y_prob"] is not None and np.ndim(res["y_prob"]) == 1
         is_bin   = res["is_binary"] and has_prob
 
-        # Predicciones con threshold (si aplica) o las originales
         yp = (res["y_prob"] >= threshold).astype(int) if is_bin else res["y_pred"]
 
-        # Métricas SIEMPRE weighted → coherentes con la tabla y la matriz
         acc  = accuracy_score(yt, yp)
         prec = precision_score(yt, yp, average="weighted", zero_division=0)
         rec  = recall_score(yt, yp, average="weighted", zero_division=0)
@@ -372,7 +423,6 @@ elif page == "🤖 4. Modelos ML":
         cm   = confusion_matrix(yt, yp)
         rep  = classification_report(yt, yp, output_dict=True, zero_division=0)
 
-        # Recalcular AUC y logloss con threshold si hay probs
         if is_bin:
             try:    auc_val = roc_auc_score(yt, res["y_prob"])
             except: auc_val = None
@@ -385,7 +435,6 @@ elif page == "🤖 4. Modelos ML":
         auc_text = f"{auc_val:.3f}" if auc_val is not None else "N/A"
         ll_text  = f"{ll_val:.4f}"  if ll_val  is not None else "N/A"
 
-        # ── Nota de coherencia ──
         thr_note = f" · threshold={threshold:.2f}" if is_bin else ""
         st.markdown(
             f'<div class="info-box">📐 Métricas en <b>weighted average</b>{thr_note} '
@@ -410,7 +459,6 @@ elif page == "🤖 4. Modelos ML":
             st.markdown("**Reporte de Clasificación** *(las tarjetas usan fila* `weighted avg`*)*")
             st.dataframe(rdf, use_container_width=True)
 
-        # Curva ROC
         if is_bin and auc_val is not None:
             fpr, tpr, thr_arr = roc_curve(yt, res["y_prob"])
             idx = np.argmin(np.abs(thr_arr - threshold))
@@ -423,7 +471,6 @@ elif page == "🤖 4. Modelos ML":
             ax2.set_title("Curva ROC"); ax2.legend()
             fig2.tight_layout(); st.pyplot(fig2)
 
-        # Curva Precision-Recall (LR binario)
         if is_bin and "Logística" in res["name"] and res["y_prob"] is not None:
             section_header("📉", "Curva Precision-Recall")
             pr, rc, _ = precision_recall_curve(yt, res["y_prob"])
@@ -436,7 +483,6 @@ elif page == "🤖 4. Modelos ML":
         return acc, prec, rec, f1v, cm, rep
 
     def show_cv(model_cls, X, y, cv=5, key_prefix=""):
-        """Cross Validation desplegable."""
         section_header("🔄","Cross Validation")
         st.markdown('<div class="info-box">Validación cruzada estratificada para estimar desempeño real.</div>', unsafe_allow_html=True)
         cv_k=st.slider("Folds (k)",3,10,5,key=f"cv_{key_prefix}")
@@ -451,7 +497,6 @@ elif page == "🤖 4. Modelos ML":
             fig.tight_layout(); st.pyplot(fig)
 
     def show_feature_importance(model, feat_names, title="Feature Importance"):
-        """Gráfica de importancia para RF."""
         if not hasattr(model,"feature_importances_") or not feat_names: return
         section_header("🌟",title)
         imp=model.feature_importances_
@@ -465,7 +510,6 @@ elif page == "🤖 4. Modelos ML":
         fig.tight_layout(); st.pyplot(fig)
 
     def show_top10_coef(model, feat_names):
-        """Top 10 coeficientes LR."""
         if not hasattr(model,"coef_") or not feat_names: return
         section_header("🏆","Top 10 Coeficientes")
         st.markdown('<div class="info-box">Mayor valor absoluto = mayor impacto. Verde=positivo, Rojo=negativo.</div>', unsafe_allow_html=True)
@@ -539,7 +583,6 @@ elif page == "🤖 4. Modelos ML":
             res=st.session_state["results_lr"]
             show_metrics_cards(res,threshold=thr_lr)
             show_top10_coef(res["model"],res["feature_names"])
-            # CV
             if st.session_state.get("X_lr") and st.session_state.get("feats_lr"):
                 Xtr,Xte,ytr,yte=st.session_state["X_lr"]
                 Xall=np.vstack([Xtr,Xte]); yall=np.concatenate([ytr,yte])
@@ -569,7 +612,6 @@ elif page == "🤖 4. Modelos ML":
             yp2=df_proc[dep_knn].dropna()
             st.markdown(f'<div class="info-box">📌 Y: <b>{dep_knn}</b> | tipo: <code>{yp2.dtype}</code> | clases: <b>{yp2.nunique()}</b></div>', unsafe_allow_html=True)
 
-        # Elbow plot
         if st.checkbox("📈 Elbow Plot (Error vs K)",key="elbow_cb"):
             if feat_knn and dep_knn and check_y_discreta(df_proc[dep_knn],dep_knn):
                 dm=df_proc[feat_knn+[dep_knn]].dropna()
@@ -681,7 +723,6 @@ elif page == "🤖 4. Modelos ML":
         st.markdown("---")
         section_header("⚡","Comparación de Modelos")
 
-        # Selección de clase para comparar
         first_res = list(avail.values())[0]
         classes_avail = list(np.unique(np.array(first_res["y_test"])))
         classes_str = [str(c) for c in classes_avail]
@@ -692,7 +733,6 @@ elif page == "🤖 4. Modelos ML":
         metodo_comp = cc2.selectbox("Método de comparación",
             ["Por moda (más victorias)","Por probabilidad media","Ponderación por F1"],key="metodo_comp")
 
-        # Métricas comunes por clase
         METRICAS = ["Accuracy","Precision","Recall","F1-Score","ROC-AUC"]
         rows_comp = []
         for key,res in avail.items():
@@ -712,7 +752,6 @@ elif page == "🤖 4. Modelos ML":
         comp_df=pd.DataFrame(rows_comp).set_index("Modelo")
         st.dataframe(comp_df,use_container_width=True)
 
-        # Gráfica de comparación
         plot_style(); fig_cmp,ax_cmp=plt.subplots(figsize=(11,5))
         x=np.arange(len(METRICAS)); w=0.8/max(len(rows_comp),1)
         model_names=[r["Modelo"] for r in rows_comp]
@@ -725,7 +764,6 @@ elif page == "🤖 4. Modelos ML":
         ax_cmp.set_ylim(0,115); ax_cmp.set_title(f"Comparación — Clase: {clase_sel}"); ax_cmp.legend()
         fig_cmp.tight_layout(); st.pyplot(fig_cmp)
 
-        # Ganador por moda (victorias por métrica)
         st.markdown("---")
         section_header("🏆","Ganador por Moda (Victorias por Métrica)")
         wins={r["Modelo"]:0 for r in rows_comp}
@@ -757,7 +795,6 @@ elif page == "🤖 4. Modelos ML":
         section_header("🔗","Ensamble de Modelos")
         st.markdown('<div class="info-box">Combina los modelos entrenados en un clasificador ensemble. Necesitas que todos usen las <b>mismas variables X e Y</b> y el mismo conjunto de datos.</div>', unsafe_allow_html=True)
 
-        # Seleccionar modelos a incluir
         modelos_disp={
             "🔵 Regresión Logística":"results_lr",
             "🟣 KNN":"results_knn",
@@ -776,7 +813,6 @@ elif page == "🤖 4. Modelos ML":
             for i,m in enumerate(modelos_sel):
                 pesos[m]=cp[i].slider(m.split(" ",1)[1],0.1,5.0,1.0,0.1,key=f"peso_{i}")
 
-        # Config del ensamble
         ec1,ec2=st.columns(2)
         dep_ens=ec1.selectbox("Variable Y del ensamble",all_cols_ds,key="dep_ens")
         feat_ens=ec2.multiselect("Variables X del ensamble",
@@ -796,7 +832,6 @@ elif page == "🤖 4. Modelos ML":
                     Xtr,Xte,ytr,yte=train_test_split(X,y,test_size=ts_ens,random_state=42,stratify=y)
                     sc=StandardScaler(); Xtr=sc.fit_transform(Xtr); Xte=sc.transform(Xte)
 
-                    # Construir estimadores
                     name_map={"🔵 Regresión Logística":("lr",LogisticRegression(max_iter=1000,random_state=42)),
                                "🟣 KNN":("knn",KNeighborsClassifier()),
                                "🌲 Random Forest":("rf",RandomForestClassifier(n_estimators=100,random_state=42,n_jobs=-1))}
@@ -824,7 +859,6 @@ elif page == "🤖 4. Modelos ML":
                     section_header("📊","Resultados del Ensamble")
                     show_metrics_cards(res_ens,threshold=0.5)
 
-                    # Comparar ensamble vs modelos individuales
                     section_header("📊","Ensamble vs Modelos Individuales")
                     rows_e=[{"Modelo":res_ens["name"],"Accuracy":round(res_ens["accuracy"]*100,2),
                         "F1 (macro)":round(res_ens["f1"]*100,2),"ROC-AUC":round(res_ens["auc"],4) if res_ens["auc"] else "N/A"}]
