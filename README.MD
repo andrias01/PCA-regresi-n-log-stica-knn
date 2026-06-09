@@ -1,4 +1,21 @@
 
+# 👥 Integrantes del Equipo
+
+<div align="center">
+
+| Nº | Nombre |
+|----|----------|
+| 1 | **Andrés Felipe Vélez** |
+| 2 | **Jorge Andrés Carmona Ramírez** |
+| 3 | **Juan Pablo Ocampo** |
+| 4 | **Osmel Santiago Vanegas Pérez** |
+| 5 | **Camilo Pérez** |
+
+</div>
+
+
+> **Proyecto desarrollado por el equipo conformado por los integrantes anteriormente mencionados.**
+
 # 🔬 ML Pipeline Studio
 
 Un entorno interactivo y profesional desarrollado en **Streamlit** para la automatización, análisis y despliegue de pipelines de Machine Learning. La aplicación cubre desde la carga y exploración inicial de datos hasta la normalización avanzada, entrenamiento de modelos clásicos (Regresión Logística, KNN, Random Forest) y construcción de clasificadores por Ensamble.
