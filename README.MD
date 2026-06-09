@@ -5,6 +5,9 @@ Un entorno interactivo y profesional desarrollado en **Streamlit** para la autom
 
 🌐 **Despliegue de la Aplicación:** [https://pca-rlogistica-knn.streamlit.app/](https://pca-rlogistica-knn.streamlit.app/)
 
+🌐 **Poster explicando resultados** [https://uconet-my.sharepoint.com/:b:/g/personal/andres_velez5136_uco_net_co/IQDOxUTg-gKFSJ1yYy4HnWrdAX4qW8Fz4REzmQri8xT8dC8?e=0fchyu/](PDF poster click aqui)
+
+
 ---
 
 ## 📸 Capturas de la Interfaz y Resultados
