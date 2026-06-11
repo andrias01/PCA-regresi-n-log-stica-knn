@@ -16,11 +16,14 @@ from sklearn.preprocessing import LabelEncoder, StandardScaler, MinMaxScaler, Ro
 from sklearn.linear_model import LogisticRegression
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.ensemble import RandomForestClassifier, VotingClassifier
-from sklearn.model_selection import train_test_split, cross_val_score, StratifiedKFold
+from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.model_selection import train_test_split, cross_val_score, StratifiedKFold, KFold
 from sklearn.metrics import (
     accuracy_score, precision_score, recall_score, f1_score,
     roc_auc_score, log_loss, confusion_matrix, ConfusionMatrixDisplay,
     roc_curve, precision_recall_curve, classification_report,
+    mean_squared_error, mean_absolute_error, r2_score,
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -109,7 +112,7 @@ with st.sidebar:
     for key,label in [("results_lr","🔵 LR"),("results_knn","🟣 KNN"),("results_rf","🌲 RF")]:
         if st.session_state.get(key): st.markdown(f"✅ {label} entrenado")
     st.markdown("---")
-    st.markdown("<small style='opacity:.5'>ML Pipeline Studio v2.0<br>LR · KNN · Random Forest</small>", unsafe_allow_html=True)
+    st.markdown("<small style='opacity:.5'>ML Pipeline Studio v2.1<br>LR · KNN · Random Forest</small>", unsafe_allow_html=True)
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -118,7 +121,6 @@ with st.sidebar:
 if page == "📁 1. Carga y Exploración":
     st.title("📁 Carga y Exploración de Datos")
 
-    # ── Selector de fuente ────────────────────────────────────────────────────
     section_header("📂", "Selecciona el Dataset")
 
     opciones = list(DATASET_PATHS.keys()) + ["⬆️ Subir archivo propio"]
@@ -129,14 +131,12 @@ if page == "📁 1. Carga y Exploración":
         label_visibility="collapsed",
     )
 
-    # ── Parámetros de lectura ─────────────────────────────────────────────────
     c1, c2 = st.columns(2)
     sep = c1.selectbox("Separador", [",", ";", "|", "\t"])
     enc = c2.selectbox("Encoding", ["utf-8", "latin-1", "cp1252"])
 
     data = None
 
-    # ── Opción A: dataset predefinido ─────────────────────────────────────────
     if fuente in DATASET_PATHS:
         ruta = DATASET_PATHS[fuente]
         if _os.path.exists(ruta):
@@ -159,8 +159,6 @@ if page == "📁 1. Carga y Exploración":
                 f'o ajusta la variable <code>DATASET_PATHS</code> al inicio del código.</div>',
                 unsafe_allow_html=True,
             )
-
-    # ── Opción B: upload manual ───────────────────────────────────────────────
     else:
         uploaded = st.file_uploader("Sube tu archivo CSV", type=["csv"])
         if uploaded:
@@ -184,7 +182,6 @@ if page == "📁 1. Carga y Exploración":
                     unsafe_allow_html=True,
                 )
 
-    # ── Exploración ───────────────────────────────────────────────────────────
     if data is not None:
 
         section_header("📏","Dimensiones")
@@ -395,6 +392,17 @@ elif page == "🤖 4. Modelos ML":
             except: pass
         return res
 
+    def compute_metrics_regression(y_test, y_pred, model_name):
+        """Métricas para modelos de regresión."""
+        mse  = mean_squared_error(y_test, y_pred)
+        mae  = mean_absolute_error(y_test, y_pred)
+        rmse = np.sqrt(mse)
+        r2   = r2_score(y_test, y_pred)
+        return {
+            "name": model_name, "mse": mse, "mae": mae, "rmse": rmse, "r2": r2,
+            "y_pred": y_pred, "y_test": y_test, "is_regression": True,
+        }
+
     def train_model(model, X_tr, X_te, y_tr, y_te, name, feat_names=None):
         model.fit(X_tr, y_tr)
         y_pred = model.predict(X_te)
@@ -482,18 +490,51 @@ elif page == "🤖 4. Modelos ML":
 
         return acc, prec, rec, f1v, cm, rep
 
-    def show_cv(model_cls, X, y, cv=5, key_prefix=""):
+    def show_metrics_cards_regression(res):
+        """Tarjetas de métricas para Random Forest Regressor."""
+        st.markdown(
+            '<div class="info-box">📐 Métricas de regresión — MSE, MAE, RMSE y R²</div>',
+            unsafe_allow_html=True
+        )
+        cols = st.columns(4)
+        for c, lbl, val in zip(cols,
+            ["R² Score", "RMSE", "MAE", "MSE"],
+            [f"{res['r2']:.4f}", f"{res['rmse']:.4f}", f"{res['mae']:.4f}", f"{res['mse']:.4f}"]):
+            c.markdown(metric_card(lbl, val), unsafe_allow_html=True)
+
+        plot_style()
+        fig, axes = plt.subplots(1, 2, figsize=(12, 4))
+        yt = np.array(res["y_test"]); yp = np.array(res["y_pred"])
+        axes[0].scatter(yt, yp, color="#7c3aed", alpha=0.5, edgecolors="#0f0f1a", s=30)
+        mn, mx = min(yt.min(), yp.min()), max(yt.max(), yp.max())
+        axes[0].plot([mn, mx], [mn, mx], color="#f59e0b", ls="--", lw=1.5, label="Perfecta")
+        axes[0].set_xlabel("Valores Reales"); axes[0].set_ylabel("Predicciones")
+        axes[0].set_title("Real vs Predicho"); axes[0].legend()
+        residuals = yt - yp
+        axes[1].hist(residuals, bins=30, color="#4f46e5", edgecolor="#0f0f1a", alpha=0.85)
+        axes[1].axvline(0, color="#f59e0b", ls="--", lw=1.5)
+        axes[1].set_xlabel("Residuos"); axes[1].set_ylabel("Frecuencia")
+        axes[1].set_title("Distribución de Residuos")
+        fig.tight_layout(); st.pyplot(fig)
+
+    def show_cv(model_cls, X, y, cv=5, key_prefix="", is_regression=False):
         section_header("🔄","Cross Validation")
         st.markdown('<div class="info-box">Validación cruzada estratificada para estimar desempeño real.</div>', unsafe_allow_html=True)
         cv_k=st.slider("Folds (k)",3,10,5,key=f"cv_{key_prefix}")
         if st.button("Ejecutar CV",key=f"cv_btn_{key_prefix}"):
-            skf=StratifiedKFold(n_splits=cv_k,shuffle=True,random_state=42)
-            scores=cross_val_score(model_cls,X,y,cv=skf,scoring="accuracy",n_jobs=-1)
-            st.markdown(f'<div class="success-box">CV Accuracy: <b>{scores.mean()*100:.2f}%</b> ± {scores.std()*100:.2f}%</div>', unsafe_allow_html=True)
+            if is_regression:
+                kf = KFold(n_splits=cv_k, shuffle=True, random_state=42)
+                scores = cross_val_score(model_cls, X, y, cv=kf, scoring="r2", n_jobs=-1)
+                label = "R² Score"
+            else:
+                skf = StratifiedKFold(n_splits=cv_k, shuffle=True, random_state=42)
+                scores = cross_val_score(model_cls, X, y, cv=skf, scoring="accuracy", n_jobs=-1)
+                label = "Accuracy"
+            st.markdown(f'<div class="success-box">CV {label}: <b>{scores.mean():.4f}</b> ± {scores.std():.4f}</div>', unsafe_allow_html=True)
             plot_style(); fig,ax=plt.subplots(figsize=(7,3))
-            ax.bar(range(1,cv_k+1),scores*100,color=PALETTE[:cv_k],edgecolor="#0f0f1a",width=0.6)
-            ax.axhline(scores.mean()*100,color="#f59e0b",ls="--",lw=1.5,label=f"Media={scores.mean()*100:.1f}%")
-            ax.set_xlabel("Fold"); ax.set_ylabel("Accuracy (%)"); ax.set_title("CV por Fold"); ax.legend()
+            ax.bar(range(1,cv_k+1),scores,color=PALETTE[:cv_k],edgecolor="#0f0f1a",width=0.6)
+            ax.axhline(scores.mean(),color="#f59e0b",ls="--",lw=1.5,label=f"Media={scores.mean():.3f}")
+            ax.set_xlabel("Fold"); ax.set_ylabel(label); ax.set_title("CV por Fold"); ax.legend()
             fig.tight_layout(); st.pyplot(fig)
 
     def show_feature_importance(model, feat_names, title="Feature Importance"):
@@ -612,7 +653,9 @@ elif page == "🤖 4. Modelos ML":
             yp2=df_proc[dep_knn].dropna()
             st.markdown(f'<div class="info-box">📌 Y: <b>{dep_knn}</b> | tipo: <code>{yp2.dtype}</code> | clases: <b>{yp2.nunique()}</b></div>', unsafe_allow_html=True)
 
-        if st.checkbox("📈 Elbow Plot (Error vs K)",key="elbow_cb"):
+        # ── ELBOW PLOT MEJORADO: Accuracy + Precision + Recall + F1 ──────────
+        if st.checkbox("📈 Elbow Plot (métricas vs K)",key="elbow_cb"):
+            st.markdown('<div class="info-box">Visualiza cómo evolucionan <b>Accuracy, Precision, Recall y F1-Score</b> al variar K. Útil para elegir el K óptimo.</div>', unsafe_allow_html=True)
             if feat_knn and dep_knn and check_y_discreta(df_proc[dep_knn],dep_knn):
                 dm=df_proc[feat_knn+[dep_knn]].dropna()
                 Xe=dm[feat_knn].values; ye=dm[dep_knn].values
@@ -620,12 +663,65 @@ elif page == "🤖 4. Modelos ML":
                     Xtr2,Xte2,ytr2,yte2=train_test_split(Xe,ye,test_size=ts_knn,random_state=42)
                     sc2=StandardScaler(); Xtr2=sc2.fit_transform(Xtr2); Xte2=sc2.transform(Xte2)
                     kr=range(1,min(31,len(Xtr2)))
-                    accs=[accuracy_score(yte2,KNeighborsClassifier(n_neighbors=ki,weights=w_knn,metric=m_knn).fit(Xtr2,ytr2).predict(Xte2)) for ki in kr]
-                    errs=[1-a for a in accs]
-                    plot_style(); fig,ax=plt.subplots(figsize=(8,4))
-                    ax.plot(list(kr),errs,marker="o",color="#7c3aed",lw=2.5,label="Error")
-                    ax.plot(list(kr),accs,marker="s",color="#10b981",lw=2,ls="--",label="Accuracy")
-                    ax.set_xlabel("K"); ax.set_title("Error vs K — Elbow Plot"); ax.legend(); ax.set_xticks(list(kr))
+
+                    # Calcular las 4 métricas para cada K
+                    accs, precs, recs, f1s, errs = [], [], [], [], []
+                    for ki in kr:
+                        mdl = KNeighborsClassifier(n_neighbors=ki, weights=w_knn, metric=m_knn)
+                        mdl.fit(Xtr2, ytr2)
+                        yp_ki = mdl.predict(Xte2)
+                        accs.append(accuracy_score(yte2, yp_ki))
+                        precs.append(precision_score(yte2, yp_ki, average="weighted", zero_division=0))
+                        recs.append(recall_score(yte2, yp_ki, average="weighted", zero_division=0))
+                        f1s.append(f1_score(yte2, yp_ki, average="weighted", zero_division=0))
+                        errs.append(1 - accs[-1])
+
+                    plot_style()
+                    fig, axes = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
+
+                    # Gráfico superior: las 4 métricas positivas
+                    axes[0].plot(list(kr), accs,  marker="o", color="#7c3aed", lw=2.5, markersize=5, label="Accuracy")
+                    axes[0].plot(list(kr), precs, marker="s", color="#0ea5e9", lw=2.0, markersize=5, label="Precision (W)")
+                    axes[0].plot(list(kr), recs,  marker="^", color="#10b981", lw=2.0, markersize=5, label="Recall (W)")
+                    axes[0].plot(list(kr), f1s,   marker="D", color="#f59e0b", lw=2.0, markersize=5, label="F1-Score (W)")
+
+                    # Marcar el K actual seleccionado
+                    k_idx = k_knn - 1
+                    if 0 <= k_idx < len(list(kr)):
+                        for metric_vals, col in [(accs,"#7c3aed"),(precs,"#0ea5e9"),(recs,"#10b981"),(f1s,"#f59e0b")]:
+                            axes[0].scatter(k_knn, metric_vals[k_idx], s=180, zorder=6,
+                                            color=col, edgecolors="white", linewidths=1.5)
+                        axes[0].axvline(k_knn, color="#ffffff", ls=":", lw=1.2, alpha=0.5, label=f"K={k_knn} seleccionado")
+
+                    axes[0].set_ylabel("Métrica"); axes[0].set_title("Métricas de Clasificación vs K")
+                    axes[0].legend(loc="lower right", fontsize=9)
+                    axes[0].set_ylim(max(0, min(min(accs),min(precs),min(recs),min(f1s)) - 0.05), 1.05)
+                    axes[0].set_xticks(list(kr)); axes[0].grid(True, alpha=0.3)
+
+                    # Gráfico inferior: Error rate (elbow clásico)
+                    axes[1].plot(list(kr), errs, marker="o", color="#ef4444", lw=2.5, markersize=5, label="Error Rate")
+                    if 0 <= k_idx < len(list(kr)):
+                        axes[1].scatter(k_knn, errs[k_idx], s=180, zorder=6,
+                                        color="#ef4444", edgecolors="white", linewidths=1.5)
+                        axes[1].axvline(k_knn, color="#ffffff", ls=":", lw=1.2, alpha=0.5)
+                    axes[1].set_xlabel("K (número de vecinos)")
+                    axes[1].set_ylabel("Error Rate")
+                    axes[1].set_title("Error Rate vs K (Elbow clásico)")
+                    axes[1].legend(loc="upper right", fontsize=9)
+                    axes[1].set_xticks(list(kr)); axes[1].grid(True, alpha=0.3)
+
+                    # Tabla resumen del K seleccionado
+                    if 0 <= k_idx < len(list(kr)):
+                        st.markdown(f"""
+                        <div class="success-box">
+                        📌 <b>K={k_knn} seleccionado</b> — 
+                        Accuracy: <b>{accs[k_idx]*100:.1f}%</b> · 
+                        Precision: <b>{precs[k_idx]*100:.1f}%</b> · 
+                        Recall: <b>{recs[k_idx]*100:.1f}%</b> · 
+                        F1: <b>{f1s[k_idx]*100:.1f}%</b> · 
+                        Error: <b>{errs[k_idx]*100:.1f}%</b>
+                        </div>""", unsafe_allow_html=True)
+
                     fig.tight_layout(); st.pyplot(fig)
 
         section_header("🎚️","Threshold — KNN")
@@ -666,6 +762,31 @@ elif page == "🤖 4. Modelos ML":
     # ══════════════════════════════
     if "Random Forest" in algo or "Todos" in algo:
         section_header("🌲","Random Forest — Configuración")
+
+        # ── SELECTOR: Clasificación vs Regresión ──────────────────────────────
+        st.markdown('<div class="info-box">🌳 Elige el tipo de árbol de decisión que usarán los árboles internos del bosque.</div>', unsafe_allow_html=True)
+        rf_tipo = st.radio(
+            "Tipo de árbol de decisión",
+            ["🏷️ Clasificación (RandomForestClassifier)", "📈 Regresión (RandomForestRegressor)"],
+            horizontal=True,
+            key="rf_tipo",
+        )
+        rf_es_regresion = "Regresión" in rf_tipo
+
+        if rf_es_regresion:
+            st.markdown("""
+            <div class="warn-box">
+            ⚠️ <b>Modo Regresión:</b> la variable Y debe ser <b>numérica continua</b>. 
+            Las métricas cambian a MSE, MAE, RMSE y R². 
+            No aplica threshold, ni ROC-AUC, ni matriz de confusión.
+            </div>""", unsafe_allow_html=True)
+        else:
+            st.markdown("""
+            <div class="info-box">
+            ℹ️ <b>Modo Clasificación:</b> la variable Y debe tener <b>clases discretas</b>. 
+            Se muestran Accuracy, Precision, Recall, F1, ROC-AUC y Matriz de Confusión.
+            </div>""", unsafe_allow_html=True)
+
         c1,c2=st.columns(2)
         ts_rf=c1.slider("% Test",10,40,20,key="ts_rf")/100
         dep_rf=c2.selectbox("Variable Y",all_cols_ds,key="dep_rf")
@@ -682,10 +803,15 @@ elif page == "🤖 4. Modelos ML":
 
         if dep_rf in df_proc.columns:
             yp3=df_proc[dep_rf].dropna()
-            st.markdown(f'<div class="info-box">📌 Y: <b>{dep_rf}</b> | tipo: <code>{yp3.dtype}</code> | clases: <b>{yp3.nunique()}</b></div>', unsafe_allow_html=True)
+            tipo_lbl = "continua" if rf_es_regresion else f"clases: {yp3.nunique()}"
+            st.markdown(f'<div class="info-box">📌 Y: <b>{dep_rf}</b> | tipo: <code>{yp3.dtype}</code> | {tipo_lbl} | modo: <b>{"Regresión" if rf_es_regresion else "Clasificación"}</b></div>', unsafe_allow_html=True)
 
-        section_header("🎚️","Threshold — Random Forest")
-        thr_rf=st.slider("Threshold RF",0.01,0.99,0.50,0.01,key="thr_rf",format="%.2f")
+        # Threshold solo aplica a clasificación
+        if not rf_es_regresion:
+            section_header("🎚️","Threshold — Random Forest")
+            thr_rf=st.slider("Threshold RF",0.01,0.99,0.50,0.01,key="thr_rf",format="%.2f")
+        else:
+            thr_rf = 0.5  # irrelevante para regresión
 
         bc5,bc6=st.columns([3,1])
         with bc5: run_rf=st.button("🚀 Entrenar Random Forest",type="primary",key="btn_rf")
@@ -694,31 +820,82 @@ elif page == "🤖 4. Modelos ML":
 
         if run_rf:
             if not feat_rf: st.error("Selecciona variables X.")
-            elif not check_y_discreta(df_proc[dep_rf],dep_rf): pass
+            elif not rf_es_regresion and not check_y_discreta(df_proc[dep_rf],dep_rf): pass
             else:
                 try:
                     dm=df_proc[feat_rf+[dep_rf]].dropna()
                     X=dm[feat_rf].values; y=dm[dep_rf].values
-                    Xtr,Xte,ytr,yte=train_test_split(X,y,test_size=ts_rf,random_state=42,stratify=y)
-                    sc=StandardScaler(); Xtr=sc.fit_transform(Xtr); Xte=sc.transform(Xte)
-                    res=train_model(RandomForestClassifier(n_estimators=n_est,max_depth=max_depth,min_samples_leaf=min_s,random_state=42,n_jobs=-1),Xtr,Xte,ytr,yte,"Random Forest",feat_names=feat_rf)
-                    st.session_state["results_rf"]=res; st.session_state["X_rf"]=(Xtr,Xte,ytr,yte); st.session_state["feats_rf"]=feat_rf
-                    st.success("✅ Entrenamiento completado.")
+
+                    if rf_es_regresion:
+                        # ── Regresión ──
+                        Xtr,Xte,ytr,yte=train_test_split(X,y,test_size=ts_rf,random_state=42)
+                        sc=StandardScaler(); Xtr=sc.fit_transform(Xtr); Xte=sc.transform(Xte)
+                        model_rf = RandomForestRegressor(
+                            n_estimators=n_est, max_depth=max_depth,
+                            min_samples_leaf=min_s, random_state=42, n_jobs=-1
+                        )
+                        model_rf.fit(Xtr, ytr)
+                        y_pred_rf = model_rf.predict(Xte)
+                        res = compute_metrics_regression(yte, y_pred_rf, "Random Forest (Regresión)")
+                        res["model"] = model_rf
+                        res["feature_names"] = feat_rf
+                        res["is_regression"] = True
+                        st.session_state["results_rf"] = res
+                        st.session_state["X_rf"] = (Xtr, Xte, ytr, yte)
+                        st.session_state["feats_rf"] = feat_rf
+                        st.session_state["rf_is_regression"] = True
+                        st.success("✅ Entrenamiento completado (Regresión).")
+                    else:
+                        # ── Clasificación ──
+                        Xtr,Xte,ytr,yte=train_test_split(X,y,test_size=ts_rf,random_state=42,stratify=y)
+                        sc=StandardScaler(); Xtr=sc.fit_transform(Xtr); Xte=sc.transform(Xte)
+                        res=train_model(
+                            RandomForestClassifier(n_estimators=n_est, max_depth=max_depth,
+                                                   min_samples_leaf=min_s, random_state=42, n_jobs=-1),
+                            Xtr, Xte, ytr, yte, "Random Forest", feat_names=feat_rf
+                        )
+                        res["is_regression"] = False
+                        st.session_state["results_rf"] = res
+                        st.session_state["X_rf"] = (Xtr, Xte, ytr, yte)
+                        st.session_state["feats_rf"] = feat_rf
+                        st.session_state["rf_is_regression"] = False
+                        st.success("✅ Entrenamiento completado (Clasificación).")
                 except Exception as e: st.error(f"Error: {e}")
 
         if st.session_state.get("results_rf"):
-            res=st.session_state["results_rf"]
-            show_metrics_cards(res,threshold=thr_rf)
-            show_feature_importance(res["model"],res["feature_names"])
-            if st.session_state.get("X_rf"):
-                Xtr,Xte,ytr,yte=st.session_state["X_rf"]
-                Xall=np.vstack([Xtr,Xte]); yall=np.concatenate([ytr,yte])
-                show_cv(RandomForestClassifier(n_estimators=n_est,max_depth=max_depth,min_samples_leaf=min_s,random_state=42,n_jobs=-1),Xall,yall,key_prefix="rf")
+            res = st.session_state["results_rf"]
+            is_reg = st.session_state.get("rf_is_regression", False)
+
+            if is_reg:
+                show_metrics_cards_regression(res)
+                show_feature_importance(res["model"], res["feature_names"], "Feature Importance (Regresión)")
+                if st.session_state.get("X_rf"):
+                    Xtr,Xte,ytr,yte=st.session_state["X_rf"]
+                    Xall=np.vstack([Xtr,Xte]); yall=np.concatenate([ytr,yte])
+                    show_cv(
+                        RandomForestRegressor(n_estimators=n_est, max_depth=max_depth,
+                                              min_samples_leaf=min_s, random_state=42, n_jobs=-1),
+                        Xall, yall, key_prefix="rf", is_regression=True
+                    )
+            else:
+                show_metrics_cards(res, threshold=thr_rf)
+                show_feature_importance(res["model"], res["feature_names"])
+                if st.session_state.get("X_rf"):
+                    Xtr,Xte,ytr,yte=st.session_state["X_rf"]
+                    Xall=np.vstack([Xtr,Xte]); yall=np.concatenate([ytr,yte])
+                    show_cv(
+                        RandomForestClassifier(n_estimators=n_est, max_depth=max_depth,
+                                               min_samples_leaf=min_s, random_state=42, n_jobs=-1),
+                        Xall, yall, key_prefix="rf"
+                    )
 
     # ══════════════════════════════════════════════════════════
     # COMPARACIÓN DE MODELOS
     # ══════════════════════════════════════════════════════════
     avail = {k:st.session_state.get(k) for k in ["results_lr","results_knn","results_rf"] if st.session_state.get(k)}
+    # Solo comparar modelos de clasificación
+    avail = {k:v for k,v in avail.items() if not v.get("is_regression", False)}
+
     if len(avail)>=2:
         st.markdown("---")
         section_header("⚡","Comparación de Modelos")
@@ -790,10 +967,13 @@ elif page == "🤖 4. Modelos ML":
     # ENSAMBLE
     # ══════════════════════════════════════════════════════════
     avail_ens = {k:st.session_state.get(k) for k in ["results_lr","results_knn","results_rf"] if st.session_state.get(k)}
+    # Excluir modelos de regresión del ensamble (VotingClassifier solo funciona con clasificadores)
+    avail_ens = {k:v for k,v in avail_ens.items() if not v.get("is_regression", False)}
+
     if len(avail_ens)>=2:
         st.markdown("---")
         section_header("🔗","Ensamble de Modelos")
-        st.markdown('<div class="info-box">Combina los modelos entrenados en un clasificador ensemble. Necesitas que todos usen las <b>mismas variables X e Y</b> y el mismo conjunto de datos.</div>', unsafe_allow_html=True)
+        st.markdown('<div class="info-box">Combina los modelos entrenados en un clasificador ensemble. Necesitas que todos usen las <b>mismas variables X e Y</b> y el mismo conjunto de datos. Solo disponible para modelos de <b>clasificación</b>.</div>', unsafe_allow_html=True)
 
         modelos_disp={
             "🔵 Regresión Logística":"results_lr",
@@ -801,8 +981,8 @@ elif page == "🤖 4. Modelos ML":
             "🌲 Random Forest":"results_rf",
         }
         modelos_sel=st.multiselect("Modelos a incluir en el ensamble",
-            [k for k,v in modelos_disp.items() if st.session_state.get(v)],
-            default=[k for k,v in modelos_disp.items() if st.session_state.get(v)],key="ens_sel")
+            [k for k,v in modelos_disp.items() if st.session_state.get(v) and not st.session_state.get(v,{}).get("is_regression",False)],
+            default=[k for k,v in modelos_disp.items() if st.session_state.get(v) and not st.session_state.get(v,{}).get("is_regression",False)],key="ens_sel")
 
         tipo_ens=st.radio("Tipo de votación",["Hard Voting (mayoría de votos)","Soft Voting (promedio probabilidades)","Votación Ponderada"],horizontal=True,key="tipo_ens")
 

@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gradient Descent Visualizer</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: #0f0f1a;
+    color: #e0e0ff;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px 16px;
+  }
+  h1 {
+    font-family: 'Courier New', monospace;
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: #a78bfa;
+    margin-bottom: 4px;
+    letter-spacing: 0.04em;
+  }
+  .subtitle {
+    font-size: 0.82rem;
+    color: #8888cc;
+    margin-bottom: 20px;
+    text-align: center;
+  }
+  .formula {
+    background: #1a1a2e;
+    border: 1px solid #3a3a6a;
+    border-radius: 10px;
+    padding: 10px 20px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.95rem;
+    color: #c4b5fd;
+    margin-bottom: 18px;
+    letter-spacing: 0.03em;
+  }
+  .canvas-wrap {
+    position: relative;
+    width: 100%;
+    max-width: 700px;
+  }
+  canvas {
+    width: 100%;
+    border-radius: 14px;
+    border: 1px solid #2a2a4a;
+    display: block;
+  }
+  .controls {
+    width: 100%;
+    max-width: 700px;
+    background: #1a1a2e;
+    border: 1px solid #2a2a4a;
+    border-radius: 14px;
+    padding: 20px 24px;
+    margin-top: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .control-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .ctrl-label {
+    font-family: 'Courier New', monospace;
+    font-size: 0.82rem;
+    color: #8888cc;
+    min-width: 130px;
+    letter-spacing: 0.05em;
+  }
+  .ctrl-value {
+    font-family: 'Courier New', monospace;
+    font-size: 0.88rem;
+    color: #a78bfa;
+    font-weight: 700;
+    min-width: 60px;
+  }
+  input[type=range] {
+    -webkit-appearance: none;
+    flex: 1;
+    height: 4px;
+    background: #2a2a4a;
+    border-radius: 2px;
+    outline: none;
+    min-width: 120px;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: #7c3aed;
+    cursor: pointer;
+    border: 2px solid #a78bfa;
+  }
+  .scale-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.7rem;
+    color: #555588;
+    margin-top: -6px;
+    font-family: 'Courier New', monospace;
+    padding: 0 2px;
+    flex: 1;
+    min-width: 120px;
+  }
+  .btn-row {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  button {
+    font-family: 'Courier New', monospace;
+    font-size: 0.82rem;
+    padding: 7px 18px;
+    border-radius: 8px;
+    border: 1px solid #3a3a6a;
+    cursor: pointer;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    transition: all 0.15s;
+  }
+  .btn-primary {
+    background: linear-gradient(135deg, #4f46e5, #7c3aed);
+    color: white;
+    border-color: #7c3aed;
+  }
+  .btn-primary:hover { opacity: 0.85; }
+  .btn-secondary {
+    background: #1e1e3a;
+    color: #a78bfa;
+    border-color: #4a4a7a;
+  }
+  .btn-secondary:hover { background: #2a2a4a; }
+  .btn-danger {
+    background: #2a1a1a;
+    color: #f87171;
+    border-color: #5a2a2a;
+  }
+  .btn-danger:hover { background: #3a1a1a; }
+  .stats-row {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .stat-card {
+    background: #252545;
+    border: 1px solid #3a3a6a;
+    border-radius: 10px;
+    padding: 8px 16px;
+    text-align: center;
+    flex: 1;
+    min-width: 90px;
+  }
+  .stat-card .s-label {
+    font-size: 0.68rem;
+    color: #7777aa;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-family: 'Courier New', monospace;
+  }
+  .stat-card .s-value {
+    font-family: 'Courier New', monospace;
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #a78bfa;
+    margin-top: 2px;
+  }
+  .info-box {
+    background: #1e2a4a;
+    border-left: 3px solid #4f46e5;
+    border-radius: 0 8px 8px 0;
+    padding: 8px 12px;
+    font-size: 0.78rem;
+    color: #9090cc;
+    line-height: 1.5;
+  }
+  .func-selector {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .func-btn {
+    font-size: 0.75rem;
+    padding: 5px 12px;
+    border-radius: 6px;
+    border: 1px solid #3a3a6a;
+    background: #1e1e3a;
+    color: #8888cc;
+    cursor: pointer;
+    font-family: 'Courier New', monospace;
+    transition: all 0.15s;
+  }
+  .func-btn.active {
+    background: #4f46e5;
+    color: white;
+    border-color: #7c3aed;
+  }
+  .divider { border: none; border-top: 1px solid #2a2a4a; }
+  @media (max-width: 520px) {
+    .ctrl-label { min-width: 110px; }
+  }
+</style>
+</head>
+<body>
+
+<h1>⬇ Gradient Descent Visualizer</h1>
+<p class="subtitle">Visualiza cómo el punto desciende según el learning rate</p>
+
+<div class="formula" id="formula-display">f(x,y) = (x² + y − 11)² + (x + y² − 7)²</div>
+
+<div class="canvas-wrap">
+  <canvas id="canvas" width="700" height="460"></canvas>
+</div>
+
+<div class="controls">
+
+  <div class="control-row">
+    <span class="ctrl-label">Función:</span>
+    <div class="func-selector">
+      <button class="func-btn active" data-fn="himmelblau">Himmelblau</button>
+      <button class="func-btn" data-fn="rosenbrock">Rosenbrock</button>
+      <button class="func-btn" data-fn="rastrigin">Rastrigin</button>
+      <button class="func-btn" data-fn="sphere">Esfera</button>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <div>
+    <div class="control-row">
+      <span class="ctrl-label">Learning Rate α:</span>
+      <input type="range" id="lr-slider" min="0" max="100" value="40" step="1">
+      <span class="ctrl-value" id="lr-value">0.0100</span>
+    </div>
+    <div class="control-row" style="padding-left: 142px;">
+      <div class="scale-labels">
+        <span>0.0001</span><span>0.001</span><span>0.01</span><span>0.1</span><span>1.0</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="control-row">
+    <span class="ctrl-label">Max iteraciones:</span>
+    <input type="range" id="iter-slider" min="10" max="200" value="60" step="5">
+    <span class="ctrl-value" id="iter-value">60</span>
+  </div>
+
+  <div class="control-row">
+    <span class="ctrl-label">Velocidad anim.:</span>
+    <input type="range" id="speed-slider" min="1" max="20" value="8" step="1">
+    <span class="ctrl-value" id="speed-value">8</span>
+  </div>
+
+  <hr class="divider">
+
+  <div class="btn-row">
+    <button class="btn-primary" id="btn-play">▶ Iniciar</button>
+    <button class="btn-secondary" id="btn-step">⏭ Paso a Paso</button>
+    <button class="btn-secondary" id="btn-pause">⏸ Pausar</button>
+    <button class="btn-danger" id="btn-reset">↺ Reiniciar</button>
+  </div>
+
+  <div class="stats-row" id="stats-row">
+    <div class="stat-card"><div class="s-label">Iteración</div><div class="s-value" id="stat-iter">0</div></div>
+    <div class="stat-card"><div class="s-label">Loss f(x,y)</div><div class="s-value" id="stat-loss">—</div></div>
+    <div class="stat-card"><div class="s-label">x</div><div class="s-value" id="stat-x">—</div></div>
+    <div class="stat-card"><div class="s-label">y</div><div class="s-value" id="stat-y">—</div></div>
+    <div class="stat-card"><div class="s-label">|∇f|</div><div class="s-value" id="stat-grad">—</div></div>
+  </div>
+
+  <div class="info-box" id="info-box">
+    Ajusta el <strong>Learning Rate</strong> y presiona <strong>Iniciar</strong>. Un valor muy alto causa divergencia; muy bajo = convergencia lenta.
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const W = 700, H = 460;
+
+const FUNCTIONS = {
+  himmelblau: {
+    name: 'Himmelblau',
+    formula: 'f(x,y) = (x² + y − 11)² + (x + y² − 7)²',
+    xRange: [-5, 5], yRange: [-5, 5],
+    startX: 0, startY: 0,
+    f: (x, y) => (x*x + y - 11)**2 + (x + y*y - 7)**2,
+    gx: (x, y) => 4*x*(x*x + y - 11) + 2*(x + y*y - 7),
+    gy: (x, y) => 2*(x*x + y - 11) + 4*y*(x + y*y - 7),
+    minima: [[3,2],[-2.805,3.131],[-3.779,-3.283],[3.584,-1.848]]
+  },
+  rosenbrock: {
+    name: 'Rosenbrock',
+    formula: 'f(x,y) = (1−x)² + 100(y−x²)²',
+    xRange: [-2, 2], yRange: [-1, 3],
+    startX: -1.2, startY: 1.0,
+    f: (x, y) => (1-x)**2 + 100*(y - x*x)**2,
+    gx: (x, y) => -2*(1-x) - 400*x*(y - x*x),
+    gy: (x, y) => 200*(y - x*x),
+    minima: [[1,1]]
+  },
+  rastrigin: {
+    name: 'Rastrigin (2D)',
+    formula: 'f(x,y) = 20 + x² + y² − 10(cos 2πx + cos 2πy)',
+    xRange: [-4, 4], yRange: [-4, 4],
+    startX: 3, startY: 3,
+    f: (x, y) => 20 + x*x + y*y - 10*(Math.cos(2*Math.PI*x) + Math.cos(2*Math.PI*y)),
+    gx: (x, y) => 2*x + 20*Math.PI*Math.sin(2*Math.PI*x),
+    gy: (x, y) => 2*y + 20*Math.PI*Math.sin(2*Math.PI*y),
+    minima: [[0,0]]
+  },
+  sphere: {
+    name: 'Esfera',
+    formula: 'f(x,y) = x² + y²',
+    xRange: [-5, 5], yRange: [-5, 5],
+    startX: 4, startY: -3.5,
+    f: (x, y) => x*x + y*y,
+    gx: (x, y) => 2*x,
+    gy: (x, y) => 2*y,
+    minima: [[0,0]]
+  }
+};
+
+let currentFn = 'himmelblau';
+let fn = FUNCTIONS[currentFn];
+let contourCache = null;
+let contourFnKey = null;
+
+let lr = 0.01, maxIter = 60, animSpeed = 8;
+let path = [], running = false, animTimer = null, stepIdx = 0;
+let px = fn.startX, py = fn.startY;
+
+function lrFromSlider(v) {
+  const t = v / 100;
+  return Math.pow(10, -4 + t * 4);
+}
+
+const lrSlider = document.getElementById('lr-slider');
+const lrValue = document.getElementById('lr-value');
+const iterSlider = document.getElementById('iter-slider');
+const iterValue = document.getElementById('iter-value');
+const speedSlider = document.getElementById('speed-slider');
+const speedValue = document.getElementById('speed-value');
+
+lrSlider.addEventListener('input', () => {
+  lr = lrFromSlider(+lrSlider.value);
+  lrValue.textContent = lr < 0.001 ? lr.toExponential(2) : lr.toFixed(4);
+  if (!running) redraw();
+});
+iterSlider.addEventListener('input', () => {
+  maxIter = +iterSlider.value;
+  iterValue.textContent = maxIter;
+});
+speedSlider.addEventListener('input', () => {
+  animSpeed = +speedSlider.value;
+  speedValue.textContent = animSpeed;
+});
+
+function computePath() {
+  const pts = [];
+  let x = fn.startX, y = fn.startY;
+  for (let i = 0; i <= maxIter; i++) {
+    const fv = fn.f(x, y);
+    const gx = fn.gx(x, y);
+    const gy = fn.gy(x, y);
+    pts.push({ x, y, f: fv, gx, gy, iter: i });
+    if (!isFinite(fv) || Math.abs(fv) > 1e10) { pts[pts.length-1].diverged = true; break; }
+    x = x - lr * gx;
+    y = y - lr * gy;
+  }
+  return pts;
+}
+
+function toCanvas(wx, wy) {
+  const pad = 30;
+  const cw = W - pad*2, ch = H - pad*2;
+  const [x0, x1] = fn.xRange, [y0, y1] = fn.yRange;
+  return [
+    pad + (wx - x0) / (x1 - x0) * cw,
+    pad + (1 - (wy - y0) / (y1 - y0)) * ch
+  ];
+}
+
+function buildContour() {
+  if (contourFnKey === currentFn && contourCache) return contourCache;
+  const RES = 120;
+  const [x0, x1] = fn.xRange, [y0, y1] = fn.yRange;
+  const vals = [];
+  let minV = Infinity, maxV = -Infinity;
+  for (let j = 0; j < RES; j++) {
+    for (let i = 0; i < RES; i++) {
+      const wx = x0 + i/(RES-1)*(x1-x0);
+      const wy = y0 + j/(RES-1)*(y1-y0);
+      const v = fn.f(wx, wy);
+      vals.push(v);
+      if (v < minV) minV = v;
+      if (v > maxV) maxV = v;
+    }
+  }
+  maxV = Math.min(maxV, minV + (maxV - minV) * 0.95);
+  contourCache = { vals, minV, maxV, RES };
+  contourFnKey = currentFn;
+  return contourCache;
+}
+
+function drawContourFill() {
+  const { vals, minV, maxV, RES } = buildContour();
+  const [x0, x1] = fn.xRange, [y0, y1] = fn.yRange;
+  const pad = 30;
+  const cw = W - pad*2, ch = H - pad*2;
+  const cellW = cw / (RES - 1);
+  const cellH = ch / (RES - 1);
+
+  for (let j = 0; j < RES-1; j++) {
+    for (let i = 0; i < RES-1; i++) {
+      const v = vals[j*RES+i];
+      const t = Math.max(0, Math.min(1, (Math.log(v - minV + 1) / Math.log(maxV - minV + 1))));
+      const cx = pad + i * cellW;
+      const cy = pad + (RES - 1 - j - 1) * cellH;
+      const alpha = 0.18 + 0.62 * (1 - t);
+      ctx.fillStyle = `rgba(${Math.round(120 + 80*t)}, ${Math.round(80 + 40*(1-t))}, ${Math.round(200 - 60*t)}, ${alpha})`;
+      ctx.fillRect(cx, cy, cellW + 1, cellH + 1);
+    }
+  }
+}
+
+function drawContourLines() {
+  const { vals, minV, maxV, RES } = buildContour();
+  const pad = 30;
+  const cw = W - pad*2, ch = H - pad*2;
+  const levels = 12;
+
+  for (let l = 1; l < levels; l++) {
+    const t = l / levels;
+    const threshold = minV + (maxV - minV) * t * t;
+    ctx.beginPath();
+    for (let j = 0; j < RES-1; j++) {
+      for (let i = 0; i < RES-1; i++) {
+        const v00 = vals[j*RES+i];
+        const v10 = vals[j*RES+i+1];
+        const v01 = vals[(j+1)*RES+i];
+        const v11 = vals[(j+1)*RES+i+1];
+        marchingSquares(ctx, i, j, v00, v10, v01, v11, threshold, cw, ch, RES, pad);
+      }
+    }
+    const alpha = 0.25 + 0.2 * (1 - t);
+    ctx.strokeStyle = `rgba(255, 240, 220, ${alpha})`;
+    ctx.lineWidth = 0.5;
+    ctx.stroke();
+  }
+}
+
+function interp(a, b, va, vb, threshold) {
+  if (Math.abs(vb - va) < 1e-10) return 0.5;
+  return (threshold - va) / (vb - va);
+}
+
+function marchingSquares(ctx, i, j, v00, v10, v01, v11, threshold, cw, ch, RES, pad) {
+  const cellW = cw / (RES - 1);
+  const cellH = ch / (RES - 1);
+  const cx = pad + i * cellW;
+  const cy = pad + (RES - 2 - j) * cellH;
+
+  const b00 = v00 > threshold ? 1 : 0;
+  const b10 = v10 > threshold ? 1 : 0;
+  const b01 = v01 > threshold ? 1 : 0;
+  const b11 = v11 > threshold ? 1 : 0;
+  const idx = b00 | (b10 << 1) | (b01 << 2) | (b11 << 3);
+  if (idx === 0 || idx === 15) return;
+
+  const top    = (ax, ay) => [cx + ax * cellW, cy];
+  const bottom = (ax, ay) => [cx + ax * cellW, cy + cellH];
+  const left   = (ax, ay) => [cx, cy + ay * cellH];
+  const right  = (ax, ay) => [cx + cellW, cy + ay * cellH];
+
+  const tTop    = interp(0, 1, v00, v10, threshold);
+  const tBottom = interp(0, 1, v01, v11, threshold);
+  const tLeft   = interp(0, 1, v00, v01, threshold);
+  const tRight  = interp(0, 1, v10, v11, threshold);
+
+  const ptTop    = [cx + tTop * cellW, cy];
+  const ptBottom = [cx + tBottom * cellW, cy + cellH];
+  const ptLeft   = [cx, cy + (1 - tLeft) * cellH];
+  const ptRight  = [cx + cellW, cy + (1 - tRight) * cellH];
+
+  const segs = {
+    1:  [[ptLeft, ptTop]], 2:  [[ptTop, ptRight]], 3: [[ptLeft, ptRight]],
+    4:  [[ptBottom, ptLeft]], 5: [[ptTop, ptRight],[ptBottom, ptLeft]],
+    6:  [[ptTop, ptBottom]], 7: [[ptBottom, ptRight]], 8: [[ptBottom, ptRight]],
+    9:  [[ptTop, ptBottom]], 10: [[ptTop, ptLeft],[ptBottom, ptRight]],
+    11: [[ptBottom, ptLeft]], 12: [[ptLeft, ptRight]], 13: [[ptTop, ptRight]],
+    14: [[ptLeft, ptTop]]
+  };
+  const s = segs[idx];
+  if (!s) return;
+  for (const [p1, p2] of s) {
+    ctx.moveTo(p1[0], p1[1]);
+    ctx.lineTo(p2[0], p2[1]);
+  }
+}
+
+function drawMinima() {
+  if (!fn.minima) return;
+  for (const [mx, my] of fn.minima) {
+    const [cx, cy] = toCanvas(mx, my);
+    ctx.beginPath();
+    ctx.arc(cx, cy, 5, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(16, 185, 129, 0.7)';
+    ctx.fill();
+    ctx.strokeStyle = '#10b981';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+}
+
+function drawAxes() {
+  ctx.strokeStyle = 'rgba(100,100,180,0.3)';
+  ctx.lineWidth = 1;
+  const [ox, oy] = toCanvas(0, 0);
+  ctx.beginPath(); ctx.moveTo(ox, 30); ctx.lineTo(ox, H-30); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(30, oy); ctx.lineTo(W-30, oy); ctx.stroke();
+  ctx.fillStyle = '#555577';
+  ctx.font = '10px Courier New';
+  ctx.fillText('x', W-24, oy+4);
+  ctx.fillText('y', ox+4, 24);
+}
+
+function drawPath(upToIdx) {
+  if (!path.length) return;
+  const n = Math.min(upToIdx + 1, path.length);
+  if (n < 2) return;
+
+  for (let i = 1; i < n; i++) {
+    const [x1c, y1c] = toCanvas(path[i-1].x, path[i-1].y);
+    const [x2c, y2c] = toCanvas(path[i].x, path[i].y);
+    const t = i / n;
+    ctx.beginPath();
+    ctx.moveTo(x1c, y1c);
+    ctx.lineTo(x2c, y2c);
+    ctx.strokeStyle = `rgba(167, 139, 250, ${0.3 + 0.7*t})`;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+
+  const last = path[n-1];
+  const [lx, ly] = toCanvas(last.x, last.y);
+
+  if (n >= 2) {
+    const prev = path[n-2];
+    const [px2, py2] = toCanvas(prev.x, prev.y);
+    ctx.beginPath(); ctx.moveTo(px2, py2); ctx.lineTo(lx, ly);
+    ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 2.5; ctx.stroke();
+    const angle = Math.atan2(ly - py2, lx - px2);
+    drawArrow(ctx, lx, ly, angle, 8);
+  }
+
+  ctx.beginPath();
+  ctx.arc(lx, ly, 6, 0, Math.PI*2);
+  ctx.fillStyle = '#ef4444';
+  ctx.fill();
+  ctx.strokeStyle = '#ff8888';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  const [sx, sy] = toCanvas(path[0].x, path[0].y);
+  ctx.beginPath();
+  ctx.arc(sx, sy, 4, 0, Math.PI*2);
+  ctx.fillStyle = 'rgba(79, 70, 229, 0.7)';
+  ctx.fill();
+}
+
+function drawArrow(ctx, x, y, angle, size) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(-size, -size/2);
+  ctx.lineTo(-size, size/2);
+  ctx.closePath();
+  ctx.fillStyle = '#ef4444';
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawLROverlay() {
+  const diverged = path.length > 0 && path[path.length-1].diverged;
+  const lastLoss = path.length > 0 ? path[Math.min(stepIdx, path.length-1)].f : null;
+  let msg = '';
+  if (diverged && stepIdx >= path.length - 2) msg = '⚠ Divergencia detectada';
+  else if (lr < 0.0005) msg = 'Learning rate muy bajo — convergencia lenta';
+  else if (lr > 0.5) msg = 'Learning rate alto — puede oscilar';
+  if (msg) {
+    ctx.fillStyle = 'rgba(245,158,11,0.85)';
+    ctx.font = '11px Courier New';
+    ctx.fillText(msg, 35, H - 12);
+  }
+  ctx.fillStyle = 'rgba(167,139,250,0.9)';
+  ctx.font = 'bold 11px Courier New';
+  ctx.fillText(`α = ${lr < 0.001 ? lr.toExponential(2) : lr.toFixed(4)}`, W - 100, H - 12);
+}
+
+function redraw() {
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+  drawContourFill();
+  drawContourLines();
+  drawAxes();
+  drawMinima();
+  drawPath(stepIdx);
+  drawLROverlay();
+  updateStats();
+}
+
+function updateStats() {
+  const cur = path.length > 0 ? path[Math.min(stepIdx, path.length - 1)] : null;
+  document.getElementById('stat-iter').textContent = cur ? cur.iter : 0;
+  document.getElementById('stat-loss').textContent = cur ? (cur.f > 1000 ? cur.f.toExponential(2) : cur.f.toFixed(4)) : '—';
+  document.getElementById('stat-x').textContent = cur ? cur.x.toFixed(4) : '—';
+  document.getElementById('stat-y').textContent = cur ? cur.y.toFixed(4) : '—';
+  const grad = cur ? Math.sqrt(cur.gx**2 + cur.gy**2) : null;
+  document.getElementById('stat-grad').textContent = grad !== null ? (grad > 1000 ? grad.toExponential(2) : grad.toFixed(3)) : '—';
+
+  if (cur) {
+    const isDiverged = path[path.length-1].diverged && stepIdx >= path.length - 2;
+    const isConverged = !isDiverged && grad !== null && grad < 0.01;
+    if (isDiverged) {
+      document.getElementById('info-box').innerHTML = '⚠️ <strong>Divergencia:</strong> El learning rate es demasiado alto. El punto salta sobre los mínimos y se aleja. Reduce α.';
+    } else if (isConverged) {
+      document.getElementById('info-box').innerHTML = '✅ <strong>Convergencia:</strong> El gradiente es casi 0. El punto ha encontrado un mínimo local.';
+    } else if (lr > 0.3) {
+      document.getElementById('info-box').innerHTML = '⚡ <strong>Learning rate alto:</strong> El descenso es rápido pero puede oscilar alrededor del mínimo.';
+    } else if (lr < 0.0005) {
+      document.getElementById('info-box').innerHTML = '🐢 <strong>Learning rate bajo:</strong> Pasos muy pequeños. Converge con seguridad pero tarda más iteraciones.';
+    } else {
+      document.getElementById('info-box').innerHTML = `📍 Iter ${cur.iter}/${maxIter} — Loss: <strong>${cur.f.toFixed(3)}</strong> — |∇f|: <strong>${grad.toFixed(3)}</strong>`;
+    }
+  }
+}
+
+function startAnimation() {
+  if (animTimer) clearInterval(animTimer);
+  running = true;
+  animTimer = setInterval(() => {
+    if (stepIdx < path.length - 1) {
+      stepIdx = Math.min(stepIdx + 1, path.length - 1);
+      redraw();
+    } else {
+      clearInterval(animTimer);
+      running = false;
+    }
+  }, Math.round(1000 / animSpeed));
+}
+
+document.getElementById('btn-play').addEventListener('click', () => {
+  path = computePath();
+  stepIdx = 0;
+  redraw();
+  startAnimation();
+});
+
+document.getElementById('btn-step').addEventListener('click', () => {
+  if (!path.length) { path = computePath(); stepIdx = 0; }
+  if (stepIdx < path.length - 1) stepIdx++;
+  redraw();
+  if (running) { clearInterval(animTimer); running = false; }
+});
+
+document.getElementById('btn-pause').addEventListener('click', () => {
+  if (animTimer) clearInterval(animTimer);
+  running = false;
+});
+
+document.getElementById('btn-reset').addEventListener('click', () => {
+  if (animTimer) clearInterval(animTimer);
+  running = false;
+  path = [];
+  stepIdx = 0;
+  redraw();
+  document.getElementById('info-box').innerHTML = 'Ajusta el <strong>Learning Rate</strong> y presiona <strong>Iniciar</strong>. Un valor muy alto causa divergencia; muy bajo = convergencia lenta.';
+});
+
+document.querySelectorAll('.func-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.func-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentFn = btn.dataset.fn;
+    fn = FUNCTIONS[currentFn];
+    document.getElementById('formula-display').textContent = fn.formula;
+    if (animTimer) clearInterval(animTimer);
+    running = false; path = []; stepIdx = 0;
+    redraw();
+  });
+});
+
+lrValue.textContent = lr.toFixed(4);
+iterValue.textContent = maxIter;
+speedValue.textContent = animSpeed;
+redraw();
+</script>
+</body>
+</html>
