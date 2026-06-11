@@ -805,6 +805,10 @@ elif page == "🤖 4. Modelos ML":
             yp3=df_proc[dep_rf].dropna()
             tipo_lbl = "continua" if rf_es_regresion else f"clases: {yp3.nunique()}"
             st.markdown(f'<div class="info-box">📌 Y: <b>{dep_rf}</b> | tipo: <code>{yp3.dtype}</code> | {tipo_lbl} | modo: <b>{"Regresión" if rf_es_regresion else "Clasificación"}</b></div>', unsafe_allow_html=True)
+            if feat_rf:
+                st.markdown("**📉 Varianza del Dataset (Variables X antes del entrenamiento):**")
+                df_var_x = df_proc[feat_rf].dropna().var().to_frame(name="Varianza")
+                st.dataframe(df_var_x.T.round(6), use_container_width=True)
 
         # Threshold solo aplica a clasificación
         if not rf_es_regresion:
@@ -888,6 +892,36 @@ elif page == "🤖 4. Modelos ML":
                                                min_samples_leaf=min_s, random_state=42, n_jobs=-1),
                         Xall, yall, key_prefix="rf"
                     )
+                    
+                    # --- Análisis de árboles individuales ---
+                    model_rf = res["model"]
+                    tree_data = []
+                    for idx, tree in enumerate(model_rf.estimators_):
+                        preds_tree = tree.predict(Xte)
+                        tree_var = np.var(preds_tree)
+                        tree_mean = np.mean(preds_tree)
+                        tree_data.append({
+                            "Árbol": f"Árbol {idx + 1}",
+                            "Varianza de Predicciones": round(tree_var, 6),
+                            "Predicción Promedio": round(tree_mean, 6)
+                        })
+                    
+                    df_trees = pd.DataFrame(tree_data)
+                    avg_var = df_trees["Varianza de Predicciones"].mean()
+                    avg_pred = df_trees["Predicción Promedio"].mean()
+                    
+                    section_header("🌲", "Varianza y Predicción de los Árboles Individuales")
+                    
+                    # Mostrar promedios en un cuadro
+                    c1, c2 = st.columns(2)
+                    with c1:
+                        st.markdown(metric_card("Promedio de la Varianza", f"{avg_var:.6f}"), unsafe_allow_html=True)
+                    with c2:
+                        st.markdown(metric_card("Promedio de la Predicción", f"{avg_pred:.6f}"), unsafe_allow_html=True)
+                    
+                    # Mostrar la tabla de todos los árboles
+                    with st.expander("🔍 Ver detalles de todos los árboles"):
+                        st.dataframe(df_trees, use_container_width=True)
 
     # ══════════════════════════════════════════════════════════
     # COMPARACIÓN DE MODELOS
